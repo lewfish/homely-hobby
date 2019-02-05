@@ -1,0 +1,6 @@
+docker run --shm-size 8G --rm -it \
+    -p 8888:8888 \
+    -v ${HOME}/.aws:/root/.aws \
+    -v `pwd`/mlx:/opt/src/mlx \
+    -v ${DATA_DIR}:/opt/data \
+    mlx
