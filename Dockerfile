@@ -19,9 +19,20 @@ RUN curl -o ~/miniconda.sh -O  https://repo.continuum.io/miniconda/Miniconda3-la
 ENV PATH /opt/conda/bin:$PATH
 RUN conda install -y python=$PYTHON_VERSION numpy pyyaml scipy ipython mkl mkl-include cython typing
 RUN conda install -y -c pytorch magma-cuda100 torchvision
-RUN conda install -y -c fastai fastai
 RUN conda clean -ya
 
 RUN pip install nvidia-ml-py3 dataclasses
+RUN pip install click boto3 awscli
 
+RUN git clone https://github.com/fastai/fastai && \
+    cd fastai && \
+    git checkout e87ac3bfa60e0dfbfc1e006c4ae59c9f9ad2995f && \
+    tools/run-after-git-clone && \
+    pip install -e ".[dev]"
+
+ENV LANG C.UTF-8
+ENV LC_ALL C.UTF-8
+
+COPY mlx /opt/src/mlx
 WORKDIR /opt/src
+ENV PYTHONPATH=/opt/src:$PYTHONPATH
