@@ -173,7 +173,9 @@ def train(test, s3_data, batch):
     learn = unet_learner(data, model_arch, metrics=metrics, wd=wd, bottle=True)
     learn.unfreeze()
     if fp16 and torch.cuda.is_available():
-        learn = learn.to_fp16()
+        # This loss_scale works for Resnet 34 and 50. You might need to adjust this
+        # for other models.
+        learn = learn.to_fp16(loss_scale=256)
 
     start_epoch = 1
     if os.path.isfile(str(model_path) + '.pth'):
