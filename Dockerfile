@@ -17,12 +17,13 @@ RUN curl -o ~/miniconda.sh -O  https://repo.continuum.io/miniconda/Miniconda3-la
      rm ~/miniconda.sh
 
 ENV PATH /opt/conda/bin:$PATH
-RUN conda install -y python=$PYTHON_VERSION numpy pyyaml scipy ipython mkl mkl-include cython typing
-RUN conda install -y -c pytorch magma-cuda100 torchvision
+RUN conda install -y python=$PYTHON_VERSION numpy=1.15 pyyaml=3.13 scipy=1.2 \
+    ipython=7.2 mkl=2019.1 mkl-include=2019.1 cython=0.29 typing=3.6
+RUN conda install -y -c pytorch magma-cuda100=2.5 torchvision=0.2
 RUN conda clean -ya
 
-RUN pip install nvidia-ml-py3 dataclasses
-RUN pip install click boto3 awscli
+RUN pip install nvidia-ml-py3==7.352 dataclasses==0.6
+RUN pip install click==7.0 boto3==1.9.98 awscli==1.16.108
 
 RUN git clone https://github.com/fastai/fastai && \
     cd fastai && \
