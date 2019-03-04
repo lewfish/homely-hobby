@@ -5,7 +5,7 @@ Machine learning experiments using PyTorch and fastai
 ### Run Jupyter locally
 ```
 ./scripts/build
-./scripts/console2
+./scripts/console
 jupyter notebook --ip=0.0.0.0 --no-browser --allow-root
 ```
 
