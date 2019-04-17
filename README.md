@@ -2,12 +2,20 @@
 
 Machine learning experiments using PyTorch and fastai
 
-### Run Jupyter locally
+### Build and run Docker image
 ```
 ./scripts/build
 ./scripts/console
+```
+
+### Run Jupyter locally
+```
 jupyter notebook --ip=0.0.0.0 --no-browser --allow-root
 ```
+
+### Feature Visualization
+
+A [notebook](mlx/feat_viz/min_feat_viz.ipynb) with a minimal example of doing feature visualization.
 
 ### Camvid-Tiramisu Semantic Segmentation
 
@@ -18,13 +26,13 @@ This is a minimal example of a script for training a model using fastai/PyTorch 
 * Setup Batch resources (job def, job queue, compute environment, ECR repo) using CloudFormation template in [raster-vision-aws](https://github.com/azavea/raster-vision-aws). This was intended for use with [Raster Vision](https://github.com/azavea/raster-vision), but can be used to setup GPU resources more generally.
 * Adjust constants in `./scripts/publish_image` and `./scripts/job_def.json`
 * Run `./scripts/add_job_def`. This is needed to add a special job def which maps `/dev/shm` which is needed to use multiprocessing and PyTorch on Batch.
-* Adjust URIs and hyperparams in `mlx.camvid`.
+* Adjust URIs and hyperparams in `mlx.semseg.camvid`.
 
 #### Run test locally
 ```
 ./script/build
 ./scripts/console
-python -m mlx.camvid --test
+python -m mlx.semseg.camvid --test
 ```
 
 #### Run on Batch
@@ -32,5 +40,13 @@ python -m mlx.camvid --test
 ./scripts/build
 ./scripts/publish-image
 ./scripts/console
-python -m mlx.camvid --batch
+python -m mlx.semseg.camvid --batch
 ```
+
+### Object Detection
+
+Work in progress on writing a single shot object detector.
+
+* Single box regression using Pascal 2007 [notebook](mlx/od/nbs/pascal_regression.ipynb)
+* Various utility functions for dealing with boxes can be tested using
+ `python -m mlx.od.test_utils`

@@ -12,9 +12,9 @@ from fastai.vision import (
     imagenet_stats, models, unet_learner)
 from fastai.callbacks import SaveModelCallback, CSVLogger, Callback
 
-import mlx.s3_utils as s3_utils
-import mlx.batch_utils as batch_utils
-from mlx.utils import make_dir
+import mlx.semseg.s3_utils as s3_utils
+import mlx.semseg.batch_utils as batch_utils
+from mlx.semseg.utils import make_dir
 
 
 class S3SyncCallback(Callback):
