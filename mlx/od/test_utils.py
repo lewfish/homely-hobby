@@ -35,7 +35,7 @@ class TestBoxList(unittest.TestCase):
         scores = torch.tensor([0.3, 0.7])
         bl = BoxList(boxes, labels, scores)
         filt_bl = bl.score_filter(0.5)
-        
+
         exp_bl = BoxList(torch.tensor([[1, 1, 3, 3]], dtype=torch.float),
                          torch.tensor([1]),
                          torch.tensor([0.7]))
@@ -67,7 +67,7 @@ class TestDetectorGrid(unittest.TestCase):
         anc_sizes = torch.tensor([
             [2, 0.5],
             [0.5, 2]])
-        num_classes = 2            
+        num_classes = 2
         self.grid = DetectorGrid(grid_sz, anc_sizes, num_classes)
 
     def test_decode(self):
