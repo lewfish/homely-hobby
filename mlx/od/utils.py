@@ -30,31 +30,31 @@ class BoxList():
         """
         self.boxes = boxes
         self.labels = labels
-        self.scores = (scores if scores is not None 
+        self.scores = (scores if scores is not None
                        else torch.zeros_like(self.labels))
 
     def copy(self):
-        return BoxList(self.boxes.copy(), self.labels.copy(), 
+        return BoxList(self.boxes.copy(), self.labels.copy(),
                        self.scores.copy())
 
     @staticmethod
     def merge(box_lists):
         boxes = torch.cat([bl.boxes for bl in box_lists], dim=0)
         labels = torch.cat([bl.labels for bl in box_lists])
-        scores = torch.cat([bl.scores for bl in box_lists]) 
+        scores = torch.cat([bl.scores for bl in box_lists])
         return BoxList(boxes, labels, scores)
 
     def equal(self, other):
-        return (self.boxes.equal(other.boxes) and 
+        return (self.boxes.equal(other.boxes) and
                 self.labels.equal(other.labels) and
-                self.scores.equal(other.scores))                
+                self.scores.equal(other.scores))
 
     def ind_filter(self, inds):
-        return BoxList(self.boxes[inds, :], self.labels[inds], self.scores[inds])        
+        return BoxList(self.boxes[inds, :], self.labels[inds], self.scores[inds])
 
     def score_filter(self, score_thresh=0.5):
         return self.ind_filter(self.scores > score_thresh)
-        
+
     def label_filter(self, label):
         return self.ind_filter(self.labels == label)
 
@@ -92,9 +92,9 @@ class DetectorGrid():
         """Constructor.
 
         Args:
-            anc_sizes: [a, 2] tensor 
+            anc_sizes: [a, 2] tensor
         """
-        self.grid_sz = grid_sz        
+        self.grid_sz = grid_sz
         # [a, 2]
         self.anc_sizes = anc_sizes
         self.num_ancs = anc_sizes.shape[0]
@@ -110,7 +110,7 @@ class DetectorGrid():
         self.ancs = self.get_anchors(self.grid_inds)
 
     def get_out_shape(self, batch_sz):
-        return (batch_sz, self.num_ancs * self.det_sz, 
+        return (batch_sz, self.num_ancs * self.det_sz,
                 self.grid_sz, self.grid_sz)
 
     def get_cell_centers(self, grid_inds):
@@ -138,11 +138,11 @@ class DetectorGrid():
 
     def decode(self, out):
         """Convert output of network to boxes and probs.
-        
+
         Args:
             out: tensor [b, a*d, g, g]
-        
-        Returns: (boxes, labels, scores) where 
+
+        Returns: (boxes, labels, scores) where
             boxes: tensor [b, -1, 4]
             probs: tensor [b, -1]
             scores: tensor [b, -1]
@@ -150,7 +150,7 @@ class DetectorGrid():
         batch_sz = out.shape[0]
         # [b, g, g, a, d]
         out = out.permute(0, 2, 3, 1) \
-                 .reshape((batch_sz, self.grid_sz, self.grid_sz, 
+                 .reshape((batch_sz, self.grid_sz, self.grid_sz,
                            self.num_ancs, self.det_sz))
 
         # [b, -1, c]
@@ -163,7 +163,7 @@ class DetectorGrid():
         box_sizes = self.anc_sizes * self.cell_sz * det_scales
         box_mins = box_centers - box_sizes / 2
         box_maxs = box_centers + box_sizes / 2
-        
+
         # [b, g, g, a, 4] -> [b, -1, 4]
         # box shape is  (ymin, xmin, ymax, xmax)
         boxes = torch.cat((box_mins, box_maxs), dim=4) \
@@ -174,11 +174,11 @@ class DetectorGrid():
 
     def encode(self, boxes, labels):
         """Convert boxes and labels to output of network.
-        
+
         Args:
             boxes: tensor [b, n, 4]
             labels: tensor [b, n]
-        
+
         Returns: tensor [b, a*d, g, g]
         """
         batch_sz = boxes.shape[0]
@@ -208,23 +208,23 @@ class DetectorGrid():
                 # [2]
                 anc_center = self.cell_centers[grid_ind[0], grid_ind[1], :]
                 # TODO handle collisions
-                
+
                 # [2]
                 offset = (anc_center - box_centers[n_ind, :]) / self.cell_sz
                 scales = (box[2:]-box[:2]) / (anc[2:]-anc[:2]) / self.cell_sz
 
                 out[batch_ind, best_anc_ind, 0:2, grid_ind[0], grid_ind[1]] = offset
-                out[batch_ind, best_anc_ind, 2:4, grid_ind[0], grid_ind[1]] = scales                
+                out[batch_ind, best_anc_ind, 2:4, grid_ind[0], grid_ind[1]] = scales
                 out[batch_ind, best_anc_ind, 4 + labels[batch_ind, n_ind], grid_ind[0], grid_ind[1]] = 1
         return out.reshape(self.get_out_shape(batch_sz))
 
     '''
     def encode2(self, boxes, labels, num_classes, anc_sizes, grid_sz):
         """Convert boxes and labels to output of network.
-        
+
         Args:
             boxes: tensor [b, n, 4]
-            labels: tensor [b, n] 
+            labels: tensor [b, n]
             anc_sizes: tensor [d, 2]
         """
         num_dets = len(anc_sizes)
@@ -232,7 +232,7 @@ class DetectorGrid():
         batch_sz = boxes.shape[0]
         det_sz = get_det_sz(num_classes)
 
-        out = torch.zeros((batch_sz, num_dets, det_sz, grid_sz, grid_sz), 
+        out = torch.zeros((batch_sz, num_dets, det_sz, grid_sz, grid_sz),
                         dtype=torch.float)
 
         # [b, n, 2]
@@ -241,7 +241,7 @@ class DetectorGrid():
         box_centers = box_mins + (box_maxs - box_mins) / 2
         match_cells = ((box_centers + 1.0) / cell_sz).trunc()
         cell_centers = get_cell_center(match_cells, cell_sz)
-        
+
         # [d, 2]
         half_ancs = (cell_sz * anc_sizes / 2)
         # [b, n, 1, 2]
@@ -254,4 +254,4 @@ class DetectorGrid():
 
         # IOU for each anchor
         # compute offset and scale for each box
-    '''        
+    '''
