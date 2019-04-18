@@ -72,7 +72,7 @@ class BoxList():
             if i not in remove_inds:
                 _remove_inds = all_inds[
                     (self.scores < self.scores[i]) * (ious[i, :] > iou_thresh)]
-                remove_inds.update(_remove_inds)
+                remove_inds.update(_remove_inds.tolist())
                 keep_inds.append(i)
         return self.ind_filter(keep_inds)
 
