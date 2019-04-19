@@ -319,40 +319,4 @@ class DetectorGrid():
 
         box_loss = l1_loss(out_anc_params, gt_anc_params)
 
-    '''
-    def encode2(self, boxes, labels, num_classes, anc_sizes, grid_sz):
-        """Convert boxes and labels to output of network.
-
-        Args:
-            boxes: tensor [b, n, 4]
-            labels: tensor [b, n]
-            anc_sizes: tensor [d, 2]
-        """
-        num_dets = len(anc_sizes)
-        cell_sz = get_cell_sz(grid_sz)
-        batch_sz = boxes.shape[0]
-        det_sz = get_det_sz(num_classes)
-
-        out = torch.zeros((batch_sz, num_dets, det_sz, grid_sz, grid_sz),
-                        dtype=torch.float)
-
-        # [b, n, 2]
-        box_mins = boxes[:, :, 0:2]
-        box_maxs = boxes[:, :, 2:4]
-        box_centers = box_mins + (box_maxs - box_mins) / 2
-        match_cells = ((box_centers + 1.0) / cell_sz).trunc()
-        cell_centers = get_cell_center(match_cells, cell_sz)
-
-        # [d, 2]
-        half_ancs = (cell_sz * anc_sizes / 2)
-        # [b, n, 1, 2]
-        cell_centers = cell_centers.unsqueeze(2)
-        # [b, n, d, 2]
-        anc_mins = cell_centers - half_ancs
-        anc_maxs = cell_centers + half_ancs
-        # [b, n, d, 4]
-        ancs = torch.cat((anc_mins, anc_maxs), dim=3).clamp(-1, 1)
-
-        # IOU for each anchor
-        # compute offset and scale for each box
-    '''        return box_loss, class_loss
+        return box_loss, class_loss

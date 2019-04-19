@@ -119,14 +119,5 @@ class TestDetectorGrid(unittest.TestCase):
                   num_class_els)
         self.assertEqual(cl, exp_cl)
 
-    '''
-    def test_encode_decode(self):
-        boxes = torch.tensor([[[-0.75, 0, -0.25, 1]]])
-        labels = torch.tensor([[1]])
-        out = self.grid.encode(boxes, labels)
-        out_boxes, out_probs = self.grid.decode(out)
-        print(out_boxes, out_labels)
-    '''
-
 if __name__ == '__main__':
     unittest.main()
