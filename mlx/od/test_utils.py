@@ -97,6 +97,28 @@ class TestDetectorGrid(unittest.TestCase):
         out = self.grid.encode(boxes, labels)
         self.assertTrue(out.equal(exp_out))
 
+    def test_compute_losses(self):
+        boxes = torch.tensor([[[-0.75, 0, -0.25, 1]]])
+        labels = torch.tensor([[1]])
+        gt = self.grid.encode(boxes, labels)
+
+        boxes = torch.tensor([[[-1., 0, 0, 1]]])
+        labels = torch.tensor([[0]])
+        out = self.grid.encode(boxes, labels)
+
+        cl, bl = self.grid.compute_losses(out, gt)
+        cl, bl = cl.item(), bl.item()
+
+        from torch.nn.functional import binary_cross_entropy as bce, l1_loss
+        num_class_els = 16
+        exp_cl = ((2 * bce(torch.tensor(1.), torch.tensor(0.))).item() /
+                  num_class_els)
+        self.assertEqual(cl, exp_cl)
+
+        exp_bl = l1_loss(torch.tensor([0, 0, 1, 0.5]),
+                         torch.tensor([0, 0, 2, 0.5])).item()
+        self.assertEqual(bl, exp_bl)
+
     '''
     def test_encode_decode(self):
         boxes = torch.tensor([[[-0.75, 0, -0.25, 1]]])

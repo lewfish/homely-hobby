@@ -218,6 +218,31 @@ class DetectorGrid():
                 out[batch_ind, best_anc_ind, 4 + labels[batch_ind, n_ind], grid_ind[0], grid_ind[1]] = 1
         return out.reshape(self.get_out_shape(batch_sz))
 
+    def compute_losses(self, out, gt):
+        batch_sz = out.shape[0]
+
+        # [b, a, d, g*g]
+        out = out.reshape((batch_sz, self.num_ancs, self.det_sz, -1))
+        gt = gt.reshape((batch_sz, self.num_ancs, self.det_sz, -1))
+
+        out_probs = out[:, :, 4:, :]
+        gt_probs = gt[:, :, 4:, :]
+        out_anc_params = out[:, :, :4, :]
+        gt_anc_params = gt[:, :, :4, :]
+
+        # TODO: switch to use logits version
+        from torch.nn.functional import binary_cross_entropy as bce, l1_loss
+        class_loss = bce(out_probs, gt_probs)
+
+        # [b, a, 1, g*g]
+        has_object = gt_probs.sum(2, keepdim=True) != 0
+
+        out_anc_params = out_anc_params.masked_select(has_object)
+        gt_anc_params = gt_anc_params.masked_select(has_object)
+        box_loss = l1_loss(out_anc_params, gt_anc_params)
+
+        return class_loss, box_loss
+
     '''
     def encode2(self, boxes, labels, num_classes, anc_sizes, grid_sz):
         """Convert boxes and labels to output of network.
