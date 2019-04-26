@@ -1,5 +1,5 @@
 import torch
-from torch.nn.functional import binary_cross_entropy as bce, l1_loss, sigmoid
+from torch.nn.functional import binary_cross_entropy as bce, l1_loss
 
 def compute_intersection(a, b):
     """Compute intersection between boxes.
@@ -107,7 +107,7 @@ class BoxList():
         return 'boxes: {}\nlabels: {}\nscores: {}'.format(
             self.boxes, self.labels, self.scores)
 
-class DetectorGrid():
+class ObjectDetectionGrid():
     """Represents of grid of anchor boxes for object detection.
 
     Some shorthand:
@@ -145,7 +145,7 @@ class DetectorGrid():
         self.ancs = self.get_anchors(self.grid_inds)
 
     def get_out_shape(self, batch_sz):
-        return (batch_sz, self.num_ancs * self.det_sz,
+        return (batch_sz, self.num_ancs, self.det_sz,
                 self.grid_sz, self.grid_sz)
 
     def get_cell_centers(self, grid_inds):
@@ -198,7 +198,7 @@ class DetectorGrid():
         """Decode output of network into boxes, labels, and scores.
 
         Args:
-            out: tensor (b, ad, g, g) where the values for each anchor are
+            out: tensor (b, a, d, g, g) where the values for each anchor are
                 (yoffset, xoffset, yscale, xscale, p0, ..., pn)
 
         Returns: (boxes, labels, scores) where
@@ -208,9 +208,7 @@ class DetectorGrid():
         """
         batch_sz = out.shape[0]
         # (b, g, g, a, d)
-        out = out.permute(0, 2, 3, 1) \
-                 .reshape((batch_sz, self.grid_sz, self.grid_sz,
-                           self.num_ancs, self.det_sz))
+        out = out.permute(0, 3, 4, 1, 2)
 
         # (b, agg, c)
         probs = out[:, :, :, :, 4:].reshape((batch_sz, -1, self.num_classes))
@@ -242,7 +240,7 @@ class DetectorGrid():
             boxes: tensor (b, n, 4) where n is an arbitrary number
             labels: tensor (b, n)
 
-        Returns: tensor (b, ad, g, g) where the values for each anchor are
+        Returns: tensor (b, a, d, g, g) where the values for each anchor are
             (yoffset, xoffset, yscale, xscale, c0, ..., cn)
         """
         batch_sz, n = boxes.shape[0:2]
@@ -281,7 +279,7 @@ class DetectorGrid():
                 out[batch_ind, best_anc_ind,
                     4 + labels[batch_ind, n_ind], gi[0], gi[1]] = 1
 
-        return out.reshape(self.get_out_shape(batch_sz))
+        return out
 
     def compute_losses(self, out, gt):
         """Compute losses given network output and encoded ground truth.
