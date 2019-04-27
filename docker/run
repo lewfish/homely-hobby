@@ -1,0 +1,83 @@
+#!/bin/bash
+
+set -e
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ] ; do SOURCE="$(readlink "$SOURCE")"; done
+DOCKER_DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+REPO_ROOT="$( cd -P "$( dirname "$DOCKER_DIR" )" && pwd )"
+
+function usage() {
+    echo -n \
+         "Usage: $(basename "$0") <options> <command>
+Run a console in the mlx Docker image locally.
+
+Environment variables:
+MLX_DATA_DIR (directory for storing data; mounted to /opt/data)
+AWS_PROFILE (optional AWS profile)
+
+Options:
+--aws forwards AWS credentials (sets AWS_PROFILE env var and mounts ~/.aws to /root/.aws)
+--gpu use the NVIDIA runtime and GPU image
+--name sets the name of the running container
+--jupyter forwards port 8888 and runs Jupyter
+
+All arguments after above options are passed to 'docker run'.
+"
+}
+
+IMAGE="mlx"
+
+# Parse options using scheme in
+# https://stackoverflow.com/questions/192249/how-do-i-parse-command-line-arguments-in-bash
+POSITIONAL=()
+while [[ $# -gt 0 ]]
+do
+    key="$1"
+    case $key in
+        --help)
+        usage
+        exit 0
+        shift
+        ;;
+        --aws)
+        AWS="-e AWS_PROFILE=${AWS_PROFILE:-default} -v ${HOME}/.aws:/root/.aws:ro"
+        shift # past argument
+        ;;
+        --gpu)
+        IMAGE="mlx"
+        RUNTIME="--runtime=nvidia"
+        shift # past argument
+        ;;
+        --name)
+        shift
+        NAME="--name $1"
+        shift
+        ;;
+        --jupyter)
+        JUPYTER="-p 8888:8888"
+        CMD=(jupyter notebook --ip=0.0.0.0 --no-browser --allow-root)
+        shift
+        ;;
+        *)    # unknown option
+        POSITIONAL+=("$1") # save it in an array for later
+        shift # past argument
+        ;;
+    esac
+done
+set -- "${POSITIONAL[@]}" # restore positional parameters
+
+if [ -z "${CMD}" ]
+then
+    CMD=(${@:1})
+fi
+
+if [ "${BASH_SOURCE[0]}" = "${0}" ]
+then
+    docker run --shm-size 8G ${RUNTIME} ${NAME} --rm -it \
+        -p 3000:3000 \
+        -v ${REPO_ROOT}:/opt/src \
+        -v ${MLX_DATA_DIR}:/opt/data \
+        ${AWS} ${JUPYTER} \
+        ${IMAGE} "${CMD[@]}"
+fi
