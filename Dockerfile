@@ -22,14 +22,16 @@ RUN conda install -y python=$PYTHON_VERSION numpy=1.15 pyyaml=3.13 scipy=1.2 \
 RUN conda install -y -c pytorch magma-cuda100=2.5 torchvision=0.2
 RUN conda clean -ya
 
-RUN pip install nvidia-ml-py3==7.352 dataclasses==0.6
-RUN pip install click==7.0 boto3==1.9.98 awscli==1.16.108
+ENV PATH /opt/conda/bin:$PATH
+RUN conda install -y python=$PYTHON_VERSION
+RUN conda install -y -c pytorch magma-cuda100=2.5 torchvision=0.2
+RUN conda install -y -c fastai fastai=1.0.51
+RUN conda install -y -c conda-forge awscli=1.16.* boto3=1.9.*
+RUN conda install -y jupyter=1.0.*
+RUN conda clean -ya
 
-RUN git clone https://github.com/fastai/fastai && \
-    cd fastai && \
-    git checkout e87ac3bfa60e0dfbfc1e006c4ae59c9f9ad2995f && \
-    tools/run-after-git-clone && \
-    pip install -e ".[dev]"
+RUN pip install click==7.0
+RUN pip install ptvsd==4.2.*
 
 ENV LANG C.UTF-8
 ENV LC_ALL C.UTF-8
@@ -37,3 +39,5 @@ ENV LC_ALL C.UTF-8
 COPY mlx /opt/src/mlx
 WORKDIR /opt/src
 ENV PYTHONPATH=/opt/src:$PYTHONPATH
+
+CMD ["bash"]

@@ -4,13 +4,13 @@ Machine learning experiments using PyTorch and fastai
 
 ### Build and run Docker image
 ```
-./scripts/build
-./scripts/console
+./docker/build
+./docker/run
 ```
 
-### Run Jupyter locally
+To run Jupyter, use
 ```
-jupyter notebook --ip=0.0.0.0 --no-browser --allow-root
+./docker/run --jupyter
 ```
 
 ### Feature Visualization
@@ -30,16 +30,11 @@ This is a minimal example of a script for training a model using fastai/PyTorch 
 
 #### Run test locally
 ```
-./script/build
-./scripts/console
 python -m mlx.semseg.camvid --test
 ```
 
 #### Run on Batch
 ```
-./scripts/build
-./scripts/publish-image
-./scripts/console
 python -m mlx.semseg.camvid --batch
 ```
 

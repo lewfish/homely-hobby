@@ -1,5 +1,6 @@
 import torch
-from torch.nn.functional import binary_cross_entropy as bce, l1_loss, sigmoid
+from torch.nn.functional import binary_cross_entropy as bce, l1_loss
+
 
 def compute_intersection(a, b):
     """Compute intersection between boxes.
@@ -54,8 +55,17 @@ class BoxList():
         return BoxList(self.boxes.copy(), self.labels.copy(),
                        self.scores.copy())
 
+    def __len__(self):
+        return self.boxes.shape[0]
+
+    @staticmethod
+    def make_empty():
+        return BoxList(torch.zeros((0, 4)), torch.tensor([]))
+
     @staticmethod
     def merge(box_lists):
+        if len(box_lists) == 0:
+            return BoxList.make_empty()
         boxes = torch.cat([bl.boxes for bl in box_lists], dim=0)
         labels = torch.cat([bl.labels for bl in box_lists])
         scores = torch.cat([bl.scores for bl in box_lists])
@@ -97,6 +107,9 @@ class BoxList():
         return self.ind_filter(keep_inds)
 
     def nms(self, iou_thresh=0.5):
+        if len(self) == 0:
+            return self
+
         box_lists = []
         for l in self.get_unique_labels():
             bl = self.label_filter(l)._label_nms(iou_thresh)
@@ -107,7 +120,7 @@ class BoxList():
         return 'boxes: {}\nlabels: {}\nscores: {}'.format(
             self.boxes, self.labels, self.scores)
 
-class DetectorGrid():
+class ObjectDetectionGrid():
     """Represents of grid of anchor boxes for object detection.
 
     Some shorthand:
@@ -145,7 +158,7 @@ class DetectorGrid():
         self.ancs = self.get_anchors(self.grid_inds)
 
     def get_out_shape(self, batch_sz):
-        return (batch_sz, self.num_ancs * self.det_sz,
+        return (batch_sz, self.num_ancs, self.det_sz,
                 self.grid_sz, self.grid_sz)
 
     def get_cell_centers(self, grid_inds):
@@ -198,7 +211,7 @@ class DetectorGrid():
         """Decode output of network into boxes, labels, and scores.
 
         Args:
-            out: tensor (b, ad, g, g) where the values for each anchor are
+            out: tensor (b, a, d, g, g) where the values for each anchor are
                 (yoffset, xoffset, yscale, xscale, p0, ..., pn)
 
         Returns: (boxes, labels, scores) where
@@ -208,9 +221,7 @@ class DetectorGrid():
         """
         batch_sz = out.shape[0]
         # (b, g, g, a, d)
-        out = out.permute(0, 2, 3, 1) \
-                 .reshape((batch_sz, self.grid_sz, self.grid_sz,
-                           self.num_ancs, self.det_sz))
+        out = out.permute(0, 3, 4, 1, 2)
 
         # (b, agg, c)
         probs = out[:, :, :, :, 4:].reshape((batch_sz, -1, self.num_classes))
@@ -242,7 +253,7 @@ class DetectorGrid():
             boxes: tensor (b, n, 4) where n is an arbitrary number
             labels: tensor (b, n)
 
-        Returns: tensor (b, ad, g, g) where the values for each anchor are
+        Returns: tensor (b, a, d, g, g) where the values for each anchor are
             (yoffset, xoffset, yscale, xscale, c0, ..., cn)
         """
         batch_sz, n = boxes.shape[0:2]
@@ -259,29 +270,31 @@ class DetectorGrid():
             for n_ind in range(n):
                 # (4)
                 box = boxes[batch_ind, n_ind, :]
-                # (2)
-                gi = match_grid_inds[n_ind, :].tolist()
-                # (a, 4)
-                ancs = self.ancs[gi[0], gi[1], :, :]
-                # (a, 1)
-                ious = compute_iou(ancs, box.unsqueeze(0))
-                best_anc_ind = ious.squeeze().argmax()
-                # (4)
-                anc = ancs[best_anc_ind, :]
-                # (2)
-                anc_center = self.cell_centers[gi[0], gi[1], :]
-                # TODO handle collisions
+                # Ignore padding boxes which have all zeros.
+                if torch.any(box != 0.):
+                    # (2)
+                    gi = match_grid_inds[n_ind, :].tolist()
+                    # (a, 4)
+                    ancs = self.ancs[gi[0], gi[1], :, :]
+                    # (a, 1)
+                    ious = compute_iou(ancs, box.unsqueeze(0))
+                    best_anc_ind = ious.squeeze().argmax()
+                    # (4)
+                    anc = ancs[best_anc_ind, :]
+                    # (2)
+                    anc_center = self.cell_centers[gi[0], gi[1], :]
+                    # TODO handle collisions
 
-                # (2)
-                offset = (anc_center - box_centers[n_ind, :]) / self.cell_sz
-                scales = (box[2:]-box[:2]) / (anc[2:]-anc[:2]) / self.cell_sz
+                    # (2)
+                    offset = (anc_center - box_centers[n_ind, :]) / self.cell_sz
+                    scales = (box[2:]-box[:2]) / (anc[2:]-anc[:2]) / self.cell_sz
 
-                out[batch_ind, best_anc_ind, 0:2, gi[0], gi[1]] = offset
-                out[batch_ind, best_anc_ind, 2:4, gi[0], gi[1]] = scales
-                out[batch_ind, best_anc_ind,
-                    4 + labels[batch_ind, n_ind], gi[0], gi[1]] = 1
+                    out[batch_ind, best_anc_ind, 0:2, gi[0], gi[1]] = offset
+                    out[batch_ind, best_anc_ind, 2:4, gi[0], gi[1]] = scales
+                    out[batch_ind, best_anc_ind,
+                        4 + labels[batch_ind, n_ind], gi[0], gi[1]] = 1
 
-        return out.reshape(self.get_out_shape(batch_sz))
+        return out
 
     def compute_losses(self, out, gt):
         """Compute losses given network output and encoded ground truth.

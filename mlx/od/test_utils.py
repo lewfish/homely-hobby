@@ -3,7 +3,7 @@ import torch
 from torch.nn.functional import binary_cross_entropy as bce, l1_loss
 
 from mlx.od.utils import (
-    DetectorGrid, BoxList, compute_intersection, compute_iou)
+    ObjectDetectionGrid, BoxList, compute_intersection, compute_iou)
 
 class TestIOU(unittest.TestCase):
     def test_compute_intersection(self):
@@ -69,13 +69,13 @@ class TestDetectorGrid(unittest.TestCase):
             [2, 0.5],
             [0.5, 2]])
         num_classes = 2
-        self.grid = DetectorGrid(grid_sz, anc_sizes, num_classes)
+        self.grid = ObjectDetectionGrid(grid_sz, anc_sizes, num_classes)
 
     def test_decode(self):
         batch_sz = 1
         out = torch.zeros(self.grid.get_out_shape(batch_sz), dtype=torch.float)
         # y_offset, x_offset, y_scale, x_scale, c0, c1
-        out[0, self.grid.det_sz:, 0, 0] = torch.tensor([0.5, 0, 1, 1, 0.1, 0.7])
+        out[0, 1, :, 0, 0] = torch.tensor([0.5, 0, 1, 1, 0.1, 0.7])
 
         exp_boxes = torch.tensor([-0.25, -1.5, 0.25, 0.5])
         exp_labels = torch.ones((1, 8), dtype=torch.long)
@@ -91,7 +91,7 @@ class TestDetectorGrid(unittest.TestCase):
     def test_encode(self):
         exp_out = torch.zeros(self.grid.get_out_shape(1), dtype=torch.float)
         # y_offset, x_offset, y_scale, x_scale, c0, c1
-        exp_out[0, self.grid.det_sz:, 0, 1] = torch.tensor([0, 0, 1, 0.5, 0, 1])
+        exp_out[0, 1, :, 0, 1] = torch.tensor([0, 0, 1, 0.5, 0, 1])
 
         boxes = torch.tensor([[[-0.75, 0, -0.25, 1]]])
         labels = torch.tensor([[1]])
