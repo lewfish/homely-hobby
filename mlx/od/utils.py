@@ -257,27 +257,29 @@ class ObjectDetectionGrid():
             for n_ind in range(n):
                 # (4)
                 box = boxes[batch_ind, n_ind, :]
-                # (2)
-                gi = match_grid_inds[n_ind, :].tolist()
-                # (a, 4)
-                ancs = self.ancs[gi[0], gi[1], :, :]
-                # (a, 1)
-                ious = compute_iou(ancs, box.unsqueeze(0))
-                best_anc_ind = ious.squeeze().argmax()
-                # (4)
-                anc = ancs[best_anc_ind, :]
-                # (2)
-                anc_center = self.cell_centers[gi[0], gi[1], :]
-                # TODO handle collisions
+                # Ignore padding boxes which have all zeros.
+                if torch.any(box != 0.):
+                    # (2)
+                    gi = match_grid_inds[n_ind, :].tolist()
+                    # (a, 4)
+                    ancs = self.ancs[gi[0], gi[1], :, :]
+                    # (a, 1)
+                    ious = compute_iou(ancs, box.unsqueeze(0))
+                    best_anc_ind = ious.squeeze().argmax()
+                    # (4)
+                    anc = ancs[best_anc_ind, :]
+                    # (2)
+                    anc_center = self.cell_centers[gi[0], gi[1], :]
+                    # TODO handle collisions
 
-                # (2)
-                offset = (anc_center - box_centers[n_ind, :]) / self.cell_sz
-                scales = (box[2:]-box[:2]) / (anc[2:]-anc[:2]) / self.cell_sz
+                    # (2)
+                    offset = (anc_center - box_centers[n_ind, :]) / self.cell_sz
+                    scales = (box[2:]-box[:2]) / (anc[2:]-anc[:2]) / self.cell_sz
 
-                out[batch_ind, best_anc_ind, 0:2, gi[0], gi[1]] = offset
-                out[batch_ind, best_anc_ind, 2:4, gi[0], gi[1]] = scales
-                out[batch_ind, best_anc_ind,
-                    4 + labels[batch_ind, n_ind], gi[0], gi[1]] = 1
+                    out[batch_ind, best_anc_ind, 0:2, gi[0], gi[1]] = offset
+                    out[batch_ind, best_anc_ind, 2:4, gi[0], gi[1]] = scales
+                    out[batch_ind, best_anc_ind,
+                        4 + labels[batch_ind, n_ind], gi[0], gi[1]] = 1
 
         return out
 
