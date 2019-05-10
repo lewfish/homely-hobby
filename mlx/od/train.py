@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import matplotlib
 matplotlib.use("Agg")
@@ -32,19 +33,24 @@ images, lbl_bbox = trn_images+val_images, trn_lbl_bbox+val_lbl_bbox
 img2bbox = dict(zip(images, lbl_bbox))
 get_y_func = lambda o:img2bbox[o.name]
 
+
+with open(trn_path) as f:
+    d = json.load(f)
+    classes = sorted(d['categories'], key=lambda x: x['id'])
+    classes = [x['name'] for x in classes]
+
 def get_data(bs, size):
     src = ObjectItemList.from_folder(img_path)
     src = src[0:32]
     src = src.split_by_files(val_images)
-    src = src.label_from_func(get_y_func)
+    src = src.label_from_func(get_y_func, classes=classes)
     src = src.transform(get_transforms(), size=size, tfm_y=True)
     return src.databunch(path=path, bs=bs, collate_fn=bb_pad_collate,
                          num_workers=num_workers)
 
 data = get_data(bs, size)
+print(data)
 num_classes = len(data.classes)
-data.show_batch()
-plt.savefig('/opt/data/pascal.png')
 
 # Setup model
 # Subtract 2 because there's no padding on final convolution
