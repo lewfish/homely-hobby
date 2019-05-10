@@ -1,6 +1,7 @@
 import torch
 from torch.nn.functional import binary_cross_entropy as bce, l1_loss
 
+
 def compute_intersection(a, b):
     """Compute intersection between boxes.
 
@@ -54,8 +55,17 @@ class BoxList():
         return BoxList(self.boxes.copy(), self.labels.copy(),
                        self.scores.copy())
 
+    def __len__(self):
+        return self.boxes.shape[0]
+
+    @staticmethod
+    def make_empty():
+        return BoxList(torch.zeros((0, 4)), torch.tensor([]))
+
     @staticmethod
     def merge(box_lists):
+        if len(box_lists) == 0:
+            return BoxList.make_empty()
         boxes = torch.cat([bl.boxes for bl in box_lists], dim=0)
         labels = torch.cat([bl.labels for bl in box_lists])
         scores = torch.cat([bl.scores for bl in box_lists])
@@ -97,6 +107,9 @@ class BoxList():
         return self.ind_filter(keep_inds)
 
     def nms(self, iou_thresh=0.5):
+        if len(self) == 0:
+            return self
+
         box_lists = []
         for l in self.get_unique_labels():
             bl = self.label_filter(l)._label_nms(iou_thresh)
