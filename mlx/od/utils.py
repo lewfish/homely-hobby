@@ -200,7 +200,8 @@ class ObjectDetectionGrid():
         Returns:
             tensor (g, g, 2) where last dim is (row, col) within grid
         """
-        grid_inds = torch.empty((self.grid_sz, self.grid_sz, 2))
+        grid_inds = torch.empty(
+            (self.grid_sz, self.grid_sz, 2))
         for y in range(self.grid_sz):
             for x in range(self.grid_sz):
                 grid_inds[y, x, :] = torch.tensor([y, x])
@@ -219,6 +220,7 @@ class ObjectDetectionGrid():
             labels: tensor (b, agg) where each element is a class index
             scores: tensor (b, agg) where each element is a probability
         """
+        device = out.device
         batch_sz = out.shape[0]
         # (b, g, g, a, d)
         out = out.permute(0, 3, 4, 1, 2)
@@ -229,7 +231,7 @@ class ObjectDetectionGrid():
         # (b, g, g, a, 2)
         det_offsets = out[:, :, :, :, 0:2]
         det_scales = out[:, :, :, :, 2:4]
-        box_centers = (self.cell_centers.unsqueeze(2) + self.cell_sz *
+        box_centers = (self.cell_centers.to(device).unsqueeze(2) + self.cell_sz *
                        det_offsets)
         box_sizes = self.anc_sizes * self.cell_sz * det_scales
         box_mins = box_centers - box_sizes / 2
@@ -256,9 +258,11 @@ class ObjectDetectionGrid():
         Returns: tensor (b, a, d, g, g) where the values for each anchor are
             (yoffset, xoffset, yscale, xscale, c0, ..., cn)
         """
+        device = boxes.device
         batch_sz, n = boxes.shape[0:2]
         out = torch.zeros((batch_sz, self.num_ancs, self.det_sz,
-                           self.grid_sz, self.grid_sz), dtype=torch.float)
+                           self.grid_sz, self.grid_sz), dtype=torch.float,
+                           device=device)
 
         for batch_ind in range(batch_sz):
             # (n, 2)
@@ -275,14 +279,14 @@ class ObjectDetectionGrid():
                     # (2)
                     gi = match_grid_inds[n_ind, :].tolist()
                     # (a, 4)
-                    ancs = self.ancs[gi[0], gi[1], :, :]
+                    ancs = self.ancs[gi[0], gi[1], :, :].to(device)
                     # (a, 1)
                     ious = compute_iou(ancs, box.unsqueeze(0))
                     best_anc_ind = ious.squeeze().argmax()
                     # (4)
                     anc = ancs[best_anc_ind, :]
                     # (2)
-                    anc_center = self.cell_centers[gi[0], gi[1], :]
+                    anc_center = self.cell_centers[gi[0], gi[1], :].to(device)
                     # TODO handle collisions
 
                     # (2)
