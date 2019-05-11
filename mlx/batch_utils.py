@@ -1,4 +1,4 @@
-def run_on_batch(job_name, job_def, job_queue, cmd_list):
+def submit_job(job_name, job_def, job_queue, cmd_list):
     import boto3
     client = boto3.client('batch')
 
