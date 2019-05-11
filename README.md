@@ -45,3 +45,7 @@ Work in progress on writing a single shot object detector.
 * Single box regression using Pascal 2007 [notebook](mlx/od/nbs/pascal_regression.ipynb)
 * Various utility functions for dealing with boxes can be tested using
  `python -m mlx.od.test_utils`
+
+ ### Credits
+
+ The code in `mlx.filesystem` was adapted from [Raster Vision](https://github.com/azavea/raster-vision).
