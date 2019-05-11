@@ -13,8 +13,8 @@ from fastai.vision import (
 from fastai.callbacks import SaveModelCallback, CSVLogger, Callback
 
 import mlx.semseg.s3_utils as s3_utils
-import mlx.semseg.batch_utils as batch_utils
-from mlx.utils import make_dir
+from mlx.batch_utils import submit_job
+from mlx.semseg.utils import make_dir
 
 
 class S3SyncCallback(Callback):
@@ -82,7 +82,7 @@ def run_on_batch():
     job_def = 'lewfishPyTorchCustomGpuJobDefinition'
     job_queue = 'lewfishRasterVisionGpuJobQueue'
     cmd_list = ['python', '-m', 'mlx.camvid', '--s3-data']
-    batch_utils.run_on_batch(job_name, job_def, job_queue, cmd_list)
+    submit_job(job_name, job_def, job_queue, cmd_list)
     exit()
 
 
