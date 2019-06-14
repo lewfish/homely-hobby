@@ -2,6 +2,7 @@ from pathlib import Path
 import json
 import uuid
 from os.path import join
+import shutil
 
 import click
 import matplotlib
@@ -14,45 +15,86 @@ from fastai.vision import (
 from fastai.basic_train import Learner
 from fastai.callbacks import CSVLogger
 
-from mlx.od.utils import ObjectDetectionGrid, BoxList
+from mlx.od.utils import ObjectDetectionGrid, BoxList, F1
 from mlx.od.model import ObjectDetectionModel
 from mlx.batch_utils import submit_job
-from mlx.filesystem.utils import make_dir, sync_to_dir
+from mlx.filesystem.utils import make_dir, sync_to_dir, zipdir
 
 output_dir = '/opt/data/pascal2007/output/'
 output_uri = 's3://raster-vision-lf-dev/pascal2007/output/'
 
-def run_on_batch(test):
+def run_on_batch(test, debug):
     job_name = 'mlx_train_obj_det-' + str(uuid.uuid4())
     job_def = 'lewfishPyTorchCustomGpuJobDefinition'
     job_queue = 'lewfishRasterVisionGpuJobQueue'
     cmd_list = ['python', '-m', 'mlx.od.train', '--s3-data']
-    if test:
+    if debug:
         cmd_list = [
             'python', '-m', 'ptvsd', '--host', '0.0.0.0', '--port', '6006',
-            '--wait', '-m', 'mlx.od.train', '--s3-data', '--test']
+            '--wait', '-m', 'mlx.od.train', '--s3-data']
+    if test:
+        cmd_list.append('--test')
     submit_job(job_name, job_def, job_queue, cmd_list)
     exit()
+
+def plot_data(data, output_dir, max_per_split=50):
+    def _plot_data(split):
+        debug_chips_dir = join(output_dir, '{}-debug-chips'.format(split))
+        zip_path = join(output_dir, '{}-debug-chips.zip'.format(split))
+        make_dir(debug_chips_dir, force_empty=True)
+
+        ds = data.train_ds if split == 'train' else data.valid_ds
+        for i, (x, y) in enumerate(ds):
+            if i == max_per_split:
+                break
+            x.show(y=y)
+            plt.savefig(join(debug_chips_dir, '{}.png'.format(i)),
+                        figsize=(3, 3))
+            plt.close()
+        zipdir(debug_chips_dir, zip_path)
+        shutil.rmtree(debug_chips_dir)
+
+    _plot_data('train')
+    _plot_data('val')
+
+def plot_preds(data, learn, output_dir, max_plots=50):
+    preds_dir = join(output_dir, 'preds')
+    zip_path = join(output_dir, 'preds.zip')
+    make_dir(preds_dir, force_empty=True)
+
+    ds = data.valid_ds
+    for i, (x, y) in enumerate(ds):
+        if i == max_plots:
+            break
+        z = learn.predict(x)
+        x.show(y=z[0])
+        plt.savefig(join(preds_dir, '{}.png'.format(i)), figsize=(3, 3))
+        plt.close()
+
+    zipdir(preds_dir, zip_path)
+    shutil.rmtree(preds_dir)
 
 @click.command()
 @click.option('--test', is_flag=True, help='Run small test experiment')
 @click.option('--s3-data', is_flag=True, help='Use data and store results on S3')
 @click.option('--batch', is_flag=True, help='Submit Batch job for full experiment')
-def main(test, s3_data, batch):
+@click.option('--debug', is_flag=True, help='Run via debugger')
+def main(test, s3_data, batch, debug):
     if batch:
-        run_on_batch(test)
+        run_on_batch(test, debug)
 
     # Setup options
     bs = 16
     size = 256
     num_workers = 4
-    num_epochs = 10
+    num_epochs = 100
     lr = 1e-4
     # for size 256
+    # Subtract 2 because there's no padding on final convolution
     grid_sz = 8 - 2
 
     if test:
-        bs = 4
+        bs = 8
         size = 128
         num_debug_images = 32
         num_workers = 0
@@ -78,9 +120,9 @@ def main(test, s3_data, batch):
         d = json.load(f)
         classes = sorted(d['categories'], key=lambda x: x['id'])
         classes = [x['name'] for x in classes]
+        classes = ['background'] + classes
         num_classes = len(classes)
 
-    # Subtract 2 because there's no padding on final convolution
     anc_sizes = torch.tensor([
         [1, 1],
         [2, 2],
@@ -93,15 +135,15 @@ def main(test, s3_data, batch):
 
     class MyObjectCategoryList(ObjectCategoryList):
         def analyze_pred(self, pred):
-            boxes, labels, scores = grid.decode(pred.unsqueeze(0))
-            bl = BoxList(boxes[0], labels[0], scores[0])
-            bl = bl.score_filter(score_thresh=score_thresh).nms(iou_thresh=iou_thresh)
-            return [bl.boxes, bl.labels]
+            boxes, labels, _ = grid.get_preds(
+                pred.unsqueeze(0), score_thresh=score_thresh,
+                iou_thresh=iou_thresh)
+            return (boxes[0], labels[0])
 
     class MyObjectItemList(ObjectItemList):
         _label_cls = MyObjectCategoryList
 
-    def get_data(bs, size):
+    def get_data(bs, size, ):
         src = MyObjectItemList.from_folder(img_path)
         if test:
             src = src[0:num_debug_images]
@@ -113,8 +155,7 @@ def main(test, s3_data, batch):
 
     data = get_data(bs, size)
     print(data)
-    data.show_batch()
-    plt.savefig(join(output_dir, 'data.png'))
+    plot_data(data, output_dir)
 
     # Setup model
     model = ObjectDetectionModel(grid)
@@ -124,15 +165,16 @@ def main(test, s3_data, batch):
         box_loss, class_loss = model.grid.compute_losses(out, gt)
         return box_loss + class_loss
 
-    learn = Learner(data, model, loss_func=loss, path=output_dir)
+    metrics = [F1(grid, score_thresh=score_thresh, iou_thresh=iou_thresh)]
+    learn = Learner(data, model, metrics=metrics, loss_func=loss,
+                    path=output_dir)
     callbacks = [
         CSVLogger(learn, filename='log')
     ]
     # model.freeze_body()
-    learn.fit(num_epochs, lr, callbacks=callbacks)
+    learn.fit_one_cycle(num_epochs, lr, callbacks=callbacks)
 
-    learn.show_results()
-    plt.savefig(join(output_dir, 'preds.png'))
+    plot_preds(data, learn, output_dir)
 
     if s3_data:
         sync_to_dir(output_dir, output_uri)

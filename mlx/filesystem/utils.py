@@ -5,6 +5,8 @@ from threading import Timer
 import time
 import logging
 import json
+import zipfile
+from os.path import join
 
 from mlx.filesystem import FileSystem
 from mlx.filesystem.local_filesystem import make_dir
@@ -275,3 +277,12 @@ def file_to_json(uri):
 def json_to_file(js, uri):
     """Upload file to uri based on JSON dict."""
     str_to_file(json.dumps(js), uri)
+
+
+def zipdir(dir, zip_path):
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as ziph:
+        for root, dirs, files in os.walk(dir):
+            for file in files:
+                ziph.write(join(root, file),
+                           join('/'.join(dirs),
+                                os.path.basename(file)))
