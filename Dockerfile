@@ -24,8 +24,7 @@ RUN conda clean -ya
 
 ENV PATH /opt/conda/bin:$PATH
 RUN conda install -y python=$PYTHON_VERSION
-RUN conda install -y -c pytorch magma-cuda100=2.5 torchvision=0.2
-RUN conda install -y -c fastai fastai=1.0.51
+RUN conda install -y -c fastai fastai=1.0.53
 RUN conda install -y -c conda-forge awscli=1.16.* boto3=1.9.*
 RUN conda install -y jupyter=1.0.*
 RUN conda clean -ya
