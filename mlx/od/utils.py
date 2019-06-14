@@ -1,21 +1,33 @@
 import torch
 from torch.nn.functional import binary_cross_entropy as bce, l1_loss
-
+from fastai.metrics import add_metrics
+from fastai.callback import Callback
 
 def compute_intersection(a, b):
     """Compute intersection between boxes.
 
     Args:
-        a: tensor (n, 4)
+        a: tensor (m, 4)
         b: tensor (n, 4)
 
     Returns:
-        tensor (n, n)
+        tensor (m, n)
     """
-    # (n, n, 2)
-    lb = torch.max(a[:, 0:2].unsqueeze(0), b[:, 0:2].unsqueeze(1))
-    ub = torch.min(a[:, 2:4].unsqueeze(0), b[:, 2:4].unsqueeze(1))
-    # (n, n)
+    # (m, 1, 2)
+    a_min = a[:, 0:2].unsqueeze(1)
+    # (1, n, 2)
+    b_min = b[:, 0:2].unsqueeze(0)
+    # (m, n, 2)
+    lb = torch.max(a_min, b_min)
+
+    # (m, 1, 2)
+    a_max = a[:, 2:4].unsqueeze(1)
+    # (1, n, 2)
+    b_max = b[:, 2:4].unsqueeze(0)
+    # (m, n, 2)
+    ub = torch.min(a_max, b_max)
+
+    # (m, n)
     inter = (ub - lb).clamp(min=0).prod(2)
     return inter
 
@@ -23,19 +35,59 @@ def compute_iou(a, b):
     """Compute IOU between boxes.
 
     Args:
-        a: tensor (n, 4)
+        a: tensor (m, 4)
         b: tensor (n, 4)
 
     Returns:
-        tensor (n, n)
+        tensor (m, n)
     """
-    # (n, n, 2)
+    # (m, n)
     inter = compute_intersection(a, b)
+    # (m)
     a_area = (a[:, 2:4] - a[:, 0:2]).prod(1)
+    # (n)
     b_area = (b[:, 2:4] - b[:, 0:2]).prod(1)
-    union = (a_area + b_area - inter)
+    # (m, n)
+    union = (a_area.unsqueeze(1) + b_area.unsqueeze(0) - inter)
     iou = inter / union
     return iou
+
+
+class F1(Callback):
+    def __init__(self, grid, score_thresh=0.3, iou_thresh=0.5):
+        self.grid = grid
+        self.score_thresh = score_thresh
+        self.iou_thresh = iou_thresh
+
+    def on_epoch_begin(self, **kwargs):
+        self.tp, self.fp, self.fn = 0., 0., 0.
+
+    def on_batch_end(self, last_output, last_target, **kwargs):
+        # Implements "micro" averaging scheme.
+        boxes, labels, scores = self.grid.get_preds(
+            last_output, score_thresh=self.score_thresh,
+            iou_thresh=self.iou_thresh)
+        for bi, (b, l, s) in enumerate(zip(boxes, labels, scores)):
+            pred = BoxList(b, l, s).unpad()
+            gt = BoxList(last_target[0][bi], last_target[1][bi]).unpad()
+            tp, fp, fn = gt.compute_counts(pred, iou_thresh=self.iou_thresh)
+            self.tp += tp
+            self.fp += fp
+            self.fn += fn
+
+    def compute_f1(self, tp, fp, fn):
+        prec, recall, f1 = 0., 0., 0.
+        if tp + fp > 0:
+            prec = tp / (tp + fp)
+        if tp + fn > 0:
+            recall = tp / (tp + fn)
+        if prec + recall > 0:
+            f1 = 2 * (prec * recall) / (prec + recall)
+        return f1
+
+    def on_epoch_end(self, last_metrics, **kwargs):
+        return add_metrics(
+            last_metrics, self.compute_f1(self.tp, self.fp, self.fn))
 
 class BoxList():
     def __init__(self, boxes, labels, scores=None):
@@ -58,18 +110,52 @@ class BoxList():
     def __len__(self):
         return self.boxes.shape[0]
 
+    def tuple(self):
+        return self.boxes, self.labels, self.scores
+
     @staticmethod
     def make_empty():
         return BoxList(torch.zeros((0, 4)), torch.tensor([]))
 
     @staticmethod
-    def merge(box_lists):
+    def cat(box_lists):
         if len(box_lists) == 0:
             return BoxList.make_empty()
         boxes = torch.cat([bl.boxes for bl in box_lists], dim=0)
         labels = torch.cat([bl.labels for bl in box_lists])
         scores = torch.cat([bl.scores for bl in box_lists])
         return BoxList(boxes, labels, scores)
+
+    @staticmethod
+    def tensor_cat(box_lists):
+        max_len = max([len(bl) for bl in box_lists])
+        boxes = []
+        labels = []
+        scores = []
+        for bl in box_lists:
+            bl = bl.pad(max_len)
+            b, l, s = bl.tuple()
+            boxes.append(b.unsqueeze(0))
+            labels.append(l.unsqueeze(0))
+            scores.append(s.unsqueeze(0))
+        return torch.cat(boxes, dim=0), torch.cat(labels, dim=0), torch.cat(scores, dim=0)
+
+    def pad(self, new_len):
+        pad_len = new_len - len(self)
+        boxes = torch.cat((
+            torch.zeros((pad_len, 4), dtype=self.boxes.dtype, device=self.boxes.device),
+            self.boxes))
+        labels = torch.cat((
+            torch.zeros((pad_len,), dtype=self.labels.dtype, device=self.labels.device),
+            self.labels))
+        scores = torch.cat((
+            torch.zeros((pad_len,), dtype=self.scores.dtype, device=self.scores.device),
+            self.scores))
+        return BoxList(boxes, labels, scores)
+
+    def unpad(self):
+        inds = self.labels != 0
+        return self.ind_filter(inds)
 
     def equal(self, other):
         return (self.boxes.equal(other.boxes) and
@@ -114,11 +200,36 @@ class BoxList():
         for l in self.get_unique_labels():
             bl = self.label_filter(l)._label_nms(iou_thresh)
             box_lists.append(bl)
-        return BoxList.merge(box_lists)
+        return BoxList.cat(box_lists)
 
     def __repr__(self):
         return 'boxes: {}\nlabels: {}\nscores: {}'.format(
             self.boxes, self.labels, self.scores)
+
+    def compute_counts(self, pred, iou_thresh=0.5):
+        tp, fp, fn = 0, 0, 0
+        for l in self.get_unique_labels():
+            gt_bl = self.label_filter(l)
+            pred_bl = pred.label_filter(l)
+            if len(gt_bl) == 0:
+                fp += len(pred_bl)
+            elif len(pred_bl) == 0:
+                fn += len(gt_bl)
+            else:
+                num_matches = 0
+                ious = compute_iou(gt_bl.boxes, pred_bl.boxes)
+                ious[ious < iou_thresh] = 0
+                for gt_ind in range(gt_bl.boxes.shape[0]):
+                    match_val, match_ind = ious[gt_ind, :].max(0)
+                    if match_val > iou_thresh:
+                        ious[:, match_ind] = 0
+                        num_matches += 1
+
+                tp += num_matches
+                fn += len(self) - num_matches
+                fp += len(pred) - num_matches
+
+        return tp, fp, fn
 
 class ObjectDetectionGrid():
     """Represents of grid of anchor boxes for object detection.
@@ -228,12 +339,14 @@ class ObjectDetectionGrid():
         # (b, agg, c)
         probs = out[:, :, :, :, 4:].reshape((batch_sz, -1, self.num_classes))
 
+        # (g, g, 1, 2)
+        cell_centers = self.cell_centers.to(device).unsqueeze(2)
+
         # (b, g, g, a, 2)
         det_offsets = out[:, :, :, :, 0:2]
         det_scales = out[:, :, :, :, 2:4]
-        box_centers = (self.cell_centers.to(device).unsqueeze(2) + self.cell_sz *
-                       det_offsets)
-        box_sizes = self.anc_sizes * self.cell_sz * det_scales
+        box_centers = cell_centers + self.cell_sz * det_offsets
+        box_sizes = self.anc_sizes.to(device) * self.cell_sz * det_scales
         box_mins = box_centers - box_sizes / 2
         box_maxs = box_centers + box_sizes / 2
 
@@ -243,6 +356,16 @@ class ObjectDetectionGrid():
         # (b, agg)
         scores, labels = probs.max(2)
         return boxes, labels, scores
+
+    def get_preds(self, out, score_thresh=0.3, iou_thresh=0.5):
+        boxes, labels, scores = self.decode(out)
+        bls = []
+        for b in range(boxes.shape[0]):
+            bl = BoxList(boxes[b], labels[b], scores[b])
+            bl = (bl.score_filter(score_thresh=score_thresh)
+                    .nms(iou_thresh=iou_thresh))
+            bls.append(bl)
+        return BoxList.tensor_cat(bls)
 
     def encode(self, boxes, labels):
         """Encode ground truth boxes and labels into output of network.
@@ -290,7 +413,7 @@ class ObjectDetectionGrid():
                     # TODO handle collisions
 
                     # (2)
-                    offset = (anc_center - box_centers[n_ind, :]) / self.cell_sz
+                    offset = (box_centers[n_ind, :] - anc_center) / self.cell_sz
                     scales = (box[2:]-box[:2]) / (anc[2:]-anc[:2]) / self.cell_sz
 
                     out[batch_ind, best_anc_ind, 0:2, gi[0], gi[1]] = offset

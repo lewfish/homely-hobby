@@ -3,29 +3,34 @@ import torch
 from torch.nn.functional import binary_cross_entropy as bce, l1_loss
 
 from mlx.od.utils import (
-    ObjectDetectionGrid, BoxList, compute_intersection, compute_iou)
+    ObjectDetectionGrid, BoxList, compute_intersection, compute_iou, F1)
 
 class TestIOU(unittest.TestCase):
     def test_compute_intersection(self):
         a = torch.tensor([[0, 0, 2, 2],
                         [1, 1, 3, 3],
                         [2, 2, 4, 4]], dtype=torch.float)
-        inter = compute_intersection(a, a)
+        b = torch.tensor([[0, 0, 2, 2],
+                         [1, 1, 3, 3]], dtype=torch.float)
+
+        inter = compute_intersection(a, b)
         exp_inter = torch.tensor(
-            [[4, 1, 0],
-            [1, 4, 1],
-            [0, 1, 4]], dtype=torch.float)
+            [[4, 1],
+            [1, 4],
+            [0, 1]], dtype=torch.float)
         self.assertTrue(inter.equal(exp_inter))
 
     def test_compute_iou(self):
         a = torch.tensor([[0, 0, 2, 2],
                           [1, 1, 3, 3],
                           [2, 2, 4, 4]], dtype=torch.float)
-        inter = compute_iou(a, a)
+        b = torch.tensor([[0, 0, 2, 2],
+                          [1, 1, 3, 3]], dtype=torch.float)
+        inter = compute_iou(a, b)
         exp_inter = torch.tensor(
-            [[1, 1./7, 0],
-             [1./7, 1, 1./7],
-             [0, 1./7, 1]], dtype=torch.float)
+            [[1, 1./7],
+             [1./7, 1],
+             [0, 1./7]], dtype=torch.float)
         self.assertTrue(inter.equal(exp_inter))
 
 class TestBoxList(unittest.TestCase):
@@ -98,6 +103,21 @@ class TestDetectorGrid(unittest.TestCase):
         out = self.grid.encode(boxes, labels)
         self.assertTrue(out.equal(exp_out))
 
+    def test_get_preds(self):
+        grid_sz = 2
+        anc_sizes = torch.tensor([
+            [1., 1],
+            [2, 2]])
+        num_classes = 2
+        grid = ObjectDetectionGrid(grid_sz, anc_sizes, num_classes)
+
+        boxes = torch.tensor([[[0, 0, 0.5, 0.5]]])
+        labels = torch.tensor([[1]])
+        output = grid.encode(boxes, labels)
+        b, l, s = grid.get_preds(output)
+        self.assertTrue(b.equal(boxes))
+        self.assertTrue(l.equal(labels))
+
     def test_compute_losses(self):
         boxes = torch.tensor([[[-0.75, 0, -0.25, 1]]])
         labels = torch.tensor([[1]])
@@ -118,6 +138,83 @@ class TestDetectorGrid(unittest.TestCase):
         exp_cl = ((2 * bce(torch.tensor(1.), torch.tensor(0.))).item() /
                   num_class_els)
         self.assertEqual(cl, exp_cl)
+
+class TestF1(unittest.TestCase):
+    def setUp(self):
+        grid_sz = 2
+        anc_sizes = torch.tensor([
+            [1., 1],
+            [2, 2]])
+        num_classes = 3
+        self.grid = ObjectDetectionGrid(grid_sz, anc_sizes, num_classes)
+        self.f1 = F1(self.grid, score_thresh=0.3, iou_thresh=0.5)
+        self.f1.on_epoch_begin()
+
+    def test1(self):
+        # Two images in each batch. Each image has:
+        # Two boxes, both match.
+        boxes = torch.tensor([
+            [[0, 0, 0.5, 0.5], [-1, -1, -0.5, -0.5]],
+            [[0, 0, 0.5, 0.5], [-1, -1, -0.5, -0.5]]
+        ])
+        labels = torch.tensor([[1, 1], [1, 1]])
+        output = self.grid.encode(boxes, labels)
+
+        target_boxes = torch.tensor([
+            [[0, 0, 0.5, 0.5], [-1, -1, -0.5, -0.5]],
+            [[0, 0, 0.5, 0.5], [-1, -1, -0.5, -0.5]]
+        ])
+        target_labels = torch.tensor([[1, 1], [1, 1]])
+        target = (target_boxes, target_labels)
+
+        # Simulate two batches
+        self.f1.on_batch_end(output, target)
+        self.f1.on_batch_end(output, target)
+        metrics = self.f1.on_epoch_end({})
+        exp_f1 = self.f1.compute_f1(8, 0, 0)
+        self.assertEqual(exp_f1, 1.0)
+        self.assertEqual(exp_f1, metrics['last_metrics'][0])
+
+    def test2(self):
+        # Two boxes, one matches, the other doesn't overlap enough.
+        boxes = torch.tensor([
+            [[0, 0, 0.5, 0.5], [-1, -1, -0.5, -0.5]]
+        ])
+        labels = torch.tensor([[1, 1]])
+        output = self.grid.encode(boxes, labels)
+
+        target_boxes = torch.tensor([
+            [[0, 0, 0.1, 0.1], [-1, -1, -0.5, -0.5]],
+        ])
+        target_labels = torch.tensor([[1, 1]])
+        target = (target_boxes, target_labels)
+
+        self.f1.on_batch_end(output, target)
+        metrics = self.f1.on_epoch_end({})
+        exp_f1 = self.f1.compute_f1(1, 1, 1)
+        self.assertEqual(exp_f1, 0.5)
+        self.assertEqual(exp_f1, metrics['last_metrics'][0])
+
+    def test3(self):
+        # Three boxes, one matches, one overlaps but has the wrong label,
+        # and one doesn't match.
+        boxes = torch.tensor([
+            [[0, 0, 0.5, 0.5], [-1, -1, -0.5, -0.5], [-0.5, 0, 0, 0.5]]
+        ])
+        labels = torch.tensor([[1, 2, 1]])
+        output = self.grid.encode(boxes, labels)
+
+        target_boxes = torch.tensor([
+            [[0, 0, 0.5, 0.5], [-1, -1, -0.5, -0.5], [-0.5, 0, -0.4, 0.1]]
+        ])
+        target_labels = torch.tensor([[1, 1, 1]])
+        target = (target_boxes, target_labels)
+
+        self.f1.on_batch_end(output, target)
+        metrics = self.f1.on_epoch_end({})
+        exp_f1 = self.f1.compute_f1(1, 2, 2)
+        self.assertEqual(exp_f1, metrics['last_metrics'][0])
+
 
 if __name__ == '__main__':
     unittest.main()
