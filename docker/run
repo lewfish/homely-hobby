@@ -21,6 +21,7 @@ Options:
 --gpu use the NVIDIA runtime and GPU image
 --name sets the name of the running container
 --jupyter forwards port 8888 and runs Jupyter
+--debug forwards port 3000 for use with remote debugger
 
 All arguments after above options are passed to 'docker run'.
 "
@@ -59,6 +60,10 @@ do
         CMD=(jupyter notebook --ip=0.0.0.0 --no-browser --allow-root)
         shift
         ;;
+        --debug)
+        DEBUG="-p 3000:3000"
+        shift
+        ;;
         *)    # unknown option
         POSITIONAL+=("$1") # save it in an array for later
         shift # past argument
@@ -75,9 +80,8 @@ fi
 if [ "${BASH_SOURCE[0]}" = "${0}" ]
 then
     docker run --shm-size 8G ${RUNTIME} ${NAME} --rm -it \
-        -p 3000:3000 \
         -v ${REPO_ROOT}:/opt/src \
         -v ${MLX_DATA_DIR}:/opt/data \
-        ${AWS} ${JUPYTER} \
+        ${AWS} ${JUPYTER} ${DEBUG} \
         ${IMAGE} "${CMD[@]}"
 fi
