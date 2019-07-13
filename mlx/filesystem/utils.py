@@ -286,3 +286,10 @@ def zipdir(dir, zip_path):
                 ziph.write(join(root, file),
                            join('/'.join(dirs),
                                 os.path.basename(file)))
+
+
+def unzip(zip_path, target_dir):
+    make_dir(target_dir)
+    zip_ref = zipfile.ZipFile(zip_path, 'r')
+    zip_ref.extractall(target_dir)
+    zip_ref.close()
