@@ -31,6 +31,7 @@ RUN conda clean -ya
 
 RUN pip install click==7.0
 RUN pip install ptvsd==4.2.*
+RUN pip install shapely==1.6.4
 
 ENV LANG C.UTF-8
 ENV LC_ALL C.UTF-8

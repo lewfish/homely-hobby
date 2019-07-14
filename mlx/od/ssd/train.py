@@ -15,8 +15,8 @@ from fastai.vision import (
 from fastai.basic_train import Learner
 from fastai.callbacks import CSVLogger
 
-from mlx.od.utils import ObjectDetectionGrid, BoxList, F1
-from mlx.od.model import ObjectDetectionModel
+from mlx.od.ssd.utils import ObjectDetectionGrid, BoxList, F1
+from mlx.od.ssd.model import ObjectDetectionModel
 from mlx.batch_utils import submit_job
 from mlx.filesystem.utils import make_dir, sync_to_dir, zipdir
 
@@ -27,11 +27,11 @@ def run_on_batch(test, debug):
     job_name = 'mlx_train_obj_det-' + str(uuid.uuid4())
     job_def = 'lewfishPyTorchCustomGpuJobDefinition'
     job_queue = 'lewfishRasterVisionGpuJobQueue'
-    cmd_list = ['python', '-m', 'mlx.od.train', '--s3-data']
+    cmd_list = ['python', '-m', 'mlx.od.ssd.train', '--s3-data']
     if debug:
         cmd_list = [
             'python', '-m', 'ptvsd', '--host', '0.0.0.0', '--port', '6006',
-            '--wait', '-m', 'mlx.od.train', '--s3-data']
+            '--wait', '-m', 'mlx.od.ssd.train', '--s3-data']
     if test:
         cmd_list.append('--test')
     submit_job(job_name, job_def, job_queue, cmd_list)

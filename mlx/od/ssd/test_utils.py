@@ -2,7 +2,7 @@ import unittest
 import torch
 from torch.nn.functional import binary_cross_entropy as bce, l1_loss
 
-from mlx.od.utils import (
+from mlx.od.ssd.utils import (
     ObjectDetectionGrid, BoxList, compute_intersection, compute_iou, F1)
 
 class TestIOU(unittest.TestCase):
