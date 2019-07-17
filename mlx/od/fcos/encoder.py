@@ -38,11 +38,11 @@ def encode_targets(boxes, labels, pyramid_shape, num_labels):
         stride = get_stride(box_size, pyramid_shape)
         reg_arr = targets[stride]['reg_arr']
         label_arr = targets[stride]['label_arr']
-        encode_target(reg_arr, label_arr, stride, box, int(label.item()))
+        encode(reg_arr, label_arr, stride, box, int(label.item()))
 
     return targets
 
-def encode_target(reg_arr, label_arr, stride, box, label):
+def encode(reg_arr, label_arr, stride, box, label):
     # reg_arr is (4, h, w) where first dimension ranges over t, l, b, r
     # ie. (top, left, bottom, right)
     # class_arr is (c, h, w)
