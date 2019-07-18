@@ -53,8 +53,8 @@ def encode(reg_arr, label_arr, stride, box, label):
     if torch.min(box[2:] - box[0:2]) < stride:
         return
 
-    h, w = torch.Tensor(list(reg_arr.shape[1:])) * stride
-    half_stride = torch.Tensor([stride//2, stride//2]).int()
+    h, w = torch.tensor(list(reg_arr.shape[1:])) * stride
+    half_stride = torch.tensor([stride//2, stride//2]).int()
     nw_ij = (box[0:2] + half_stride) // stride
     se_ij = (box[2:] - half_stride) // stride
     nw_yx = nw_ij * stride + half_stride
