@@ -158,7 +158,6 @@ class FCOS(nn.Module):
             (tensor) with one float element containing loss
         """
         lmbda = 1.0
-        # Got rid of npos because it will result in divide by zero.
         # should we normalize by total number of cells in pyramid?
         for i, s in enumerate(out.keys()):
             pos_indicator = targets[s]['label_arr'].sum(dim=0)
@@ -166,7 +165,11 @@ class FCOS(nn.Module):
                 out[s]['label_arr'], targets[s]['label_arr'])
             rl = pos_indicator.unsqueeze(0) * nn.functional.l1_loss(
                 out[s]['reg_arr'], targets[s]['reg_arr'], reduction='none')
-            rl = rl.reshape(-1).sum() / pos_indicator.reshape(-1).sum()
+            # Put lower bound on npos to avoid dividing by zero.
+            npos = pos_indicator.reshape(-1).sum()
+            min_npos = torch.ones_like(npos)
+            npos = torch.max(min_npos, npos)
+            rl = rl.reshape(-1).sum() / npos
             if i == 0:
                 loss = ll + lmbda * rl
             else:
@@ -241,4 +244,4 @@ class FCOS(nn.Module):
                 loss = self.loss(single_head_out, encoded_targets)
             else:
                 loss += self.loss(single_head_out, encoded_targets)
-        return loss
+        return loss / batch_sz
