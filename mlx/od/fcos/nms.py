@@ -6,6 +6,16 @@ def compute_iou(geom1, geom2):
     return geom1.intersection(geom2).area / geom1.union(geom2).area
 
 def compute_nms(boxes, labels, scores, iou_thresh=0.7):
+    """Compute non-maximum suppression on CPU using Shapely and r-tree.
+
+    Args:
+        boxes: (tensor) with shape (n, 4) with format (ymin, xmin, ymax, xmax)
+        labels: (tensor) with shape (n,) with class ids
+        scores: (tensor) with scores of boxes
+        iou_thresh: (float) threshold used for merging boxes that overlap
+    Returns:
+        list of indices of boxes to keep
+    """
     good_inds = []
     for label in set(labels):
         label_inds = np.nonzero(labels == label)[0]
