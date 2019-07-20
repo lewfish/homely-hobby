@@ -108,9 +108,9 @@ class TestDecodeTargets(unittest.TestCase):
 
     def test_decode_targets(self):
         pyramid_shape = [
-            (8, 8, 8, 8),
+            (32, 32, 2, 2),
             (16, 16, 4, 4),
-            (32, 32, 2, 2)
+            (8, 8, 8, 8)
         ]
         exp_boxes = torch.Tensor([
             [0, 0, 16, 16],

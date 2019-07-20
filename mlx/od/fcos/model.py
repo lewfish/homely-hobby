@@ -21,7 +21,7 @@ class FPN(nn.Module):
 
         # Setup bottom-up backbone and hooks to capture output of stages.
         # Assumes there is layer1, 2, 3, 4, which is true for Resnets.
-        self.backbone = getattr(models, backbone_arch)(pretrained=pretrained)
+        backbone = getattr(models, backbone_arch)(pretrained=pretrained)
         self.backbone_out = {}
 
         def make_save_output(layer_name):
@@ -29,11 +29,13 @@ class FPN(nn.Module):
                 self.backbone_out[layer_name] = output
             return save_output
 
-        # TODO don't compute head of backbone.
-        self.backbone.layer1.register_forward_hook(make_save_output('layer1'))
-        self.backbone.layer2.register_forward_hook(make_save_output('layer2'))
-        self.backbone.layer3.register_forward_hook(make_save_output('layer3'))
-        self.backbone.layer4.register_forward_hook(make_save_output('layer4'))
+        backbone.layer1.register_forward_hook(make_save_output('layer1'))
+        backbone.layer2.register_forward_hook(make_save_output('layer2'))
+        backbone.layer3.register_forward_hook(make_save_output('layer3'))
+        backbone.layer4.register_forward_hook(make_save_output('layer4'))
+
+        # Remove head of backbone.
+        self.backbone = nn.Sequential(*list(backbone.children())[0:-2])
 
         # Setup layers for top-down pathway.
         self.cross_conv1 = nn.Conv2d(64, out_channels, 1)
@@ -102,23 +104,25 @@ class FCOS(nn.Module):
         self.fpn = FPN(backbone_arch, out_channels=out_channels,
                        pretrained=pretrained)
         num_scales = len(self.fpn.strides)
-        self.scale_params = torch.ones((num_scales,), requires_grad=True)
+        self.scale_params = nn.Parameter(torch.ones((num_scales,)))
         self.head = FCOSHead(num_labels, in_channels=out_channels)
 
     def loss(self, out, targets):
-        level_losses = torch.empty((len(out),))
         lmbda = 1.0
+        # Got rid of npos because it will result in divide by zero.
+        # should we normalize by total number of cells in pyramid?
         for i, s in enumerate(out.keys()):
-            # Got rid of npos because it will result in divide by zero.
             pos_indicator = targets[s]['label_arr'].sum(dim=0)
             ll = focal_loss(
                 out[s]['label_arr'], targets[s]['label_arr'])
             rl = pos_indicator.unsqueeze(0) * nn.functional.l1_loss(
                 out[s]['reg_arr'], targets[s]['reg_arr'], reduction='none')
-            rl = rl.reshape(-1).sum()
-            level_losses[i] = ll + lmbda * rl
-
-        return level_losses.sum()
+            rl = rl.reshape(-1).sum() / pos_indicator.reshape(-1).sum()
+            if i == 0:
+                loss = ll + lmbda * rl
+            else:
+                loss += ll + lmbda * rl
+        return loss
 
     def forward(self, input, targets=None):
         fpn_out = self.fpn(input)
@@ -159,11 +163,6 @@ class FCOS(nn.Module):
             labels = single_target['labels']
             encoded_targets = encode_targets(
                 boxes, labels, pyramid_shape, self.num_labels)
-            for level_encoded_targets in encoded_targets.values():
-                level_encoded_targets['reg_arr'] = \
-                    level_encoded_targets['reg_arr'].to(input.device)
-                level_encoded_targets['label_arr'] = \
-                    level_encoded_targets['label_arr'].to(input.device)
 
             single_head_out = {}
             for s in strides:

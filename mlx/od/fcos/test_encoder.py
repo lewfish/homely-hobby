@@ -71,9 +71,9 @@ class TestEncode(unittest.TestCase):
 class TestEncodeTargets(unittest.TestCase):
     def test_encode(self):
         pyramid_shape = [
-            (8, 8, 8, 8),
+            (32, 32, 2, 2),
             (16, 16, 4, 4),
-            (32, 32, 2, 2)
+            (8, 8, 8, 8)
         ]
         num_labels = 2
         boxes = torch.Tensor([

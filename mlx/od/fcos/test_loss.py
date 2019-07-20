@@ -18,7 +18,7 @@ class TestFocalLoss(unittest.TestCase):
         alphat = torch.tensor([0.75, 0.25])
         weights = torch.pow((1 - pt), gamma) * alphat
         loss_arr = bce * weights
-        exp_loss = loss_arr.reshape(-1).sum()
+        exp_loss = loss_arr.reshape(-1).mean()
 
         loss = focal_loss(output, target, gamma, alpha)
         self.assertEqual(exp_loss, loss)

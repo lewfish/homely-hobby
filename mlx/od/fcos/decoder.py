@@ -1,12 +1,15 @@
 import torch
 
 def decode(reg_arr, label_arr, stride, score_thresh=0.05):
+    device = reg_arr.device
     h, w = reg_arr.shape[1:]
-    pos_arr = torch.empty((2, h, w))
-    pos_arr[0, :, :] = torch.arange(stride//2, stride * h, stride)[:, None]
-    pos_arr[1, :, :] = torch.arange(stride//2, stride * w, stride)[None, :]
+    pos_arr = torch.empty((2, h, w), device=device)
+    pos_arr[0, :, :] = torch.arange(
+        stride//2, stride * h, stride, device=device)[:, None]
+    pos_arr[1, :, :] = torch.arange(
+        stride//2, stride * w, stride, device=device)[None, :]
 
-    boxes = torch.empty((4, h, w))
+    boxes = torch.empty((4, h, w), device=device)
     boxes[0:2, :, :] = pos_arr - reg_arr[0:2, :, :]
     boxes[2:, :, :] = pos_arr + reg_arr[2:, :, :]
 
