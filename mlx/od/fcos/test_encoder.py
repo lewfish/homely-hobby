@@ -2,9 +2,9 @@ import unittest
 
 import torch
 
-from mlx.od.fcos.encoder import encode, encode_targets
+from mlx.od.fcos.encoder import encode_box, encode_targets
 
-class TestEncode(unittest.TestCase):
+class TestEncodeBox(unittest.TestCase):
     def test_encode_too_small(self):
         num_labels = 3
         label_arr = torch.zeros((num_labels, 3, 3))
@@ -12,7 +12,7 @@ class TestEncode(unittest.TestCase):
         reg_arr = torch.zeros((4, 3, 3))
         stride = 4
         box = torch.Tensor([0, 0, 2, 2])
-        encode(reg_arr, label_arr, stride, box, label)
+        encode_box(reg_arr, label_arr, stride, box, label)
 
         exp_reg_arr = torch.zeros((4, 3, 3))
         self.assertTrue(reg_arr.equal(exp_reg_arr))
@@ -24,7 +24,7 @@ class TestEncode(unittest.TestCase):
         reg_arr = torch.zeros((4, 3, 3))
         stride = 4
         box = torch.Tensor([3, 3, 9, 9])
-        encode(reg_arr, label_arr, stride, box, label)
+        encode_box(reg_arr, label_arr, stride, box, label)
 
         exp_reg_arr = torch.zeros((4, 3, 3))
         exp_reg_arr[:, 1, 1] = torch.Tensor([3, 3, 3, 3])
@@ -37,7 +37,7 @@ class TestEncode(unittest.TestCase):
         reg_arr = torch.zeros((4, 3, 3))
         stride = 4
         box = torch.Tensor([0, 0, 4, 12])
-        encode(reg_arr, label_arr, stride, box, label)
+        encode_box(reg_arr, label_arr, stride, box, label)
 
         exp_reg_arr = torch.zeros((4, 3, 3))
         exp_reg_arr[:, 0, 0] = torch.Tensor([2, 2, 2, 10])
@@ -56,7 +56,7 @@ class TestEncode(unittest.TestCase):
         reg_arr = torch.zeros((4, 3, 3))
         stride = 4
         box = torch.Tensor([0, 8, 12, 12])
-        encode(reg_arr, label_arr, stride, box, label)
+        encode_box(reg_arr, label_arr, stride, box, label)
 
         exp_reg_arr = torch.zeros((4, 3, 3))
         exp_reg_arr[:, 0, 2] = torch.Tensor([2, 2, 10, 2])

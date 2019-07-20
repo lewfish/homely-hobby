@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torchvision import models
 
-from mlx.od.fcos.decoder import decode_targets
+from mlx.od.fcos.decoder import decode_output
 from mlx.od.fcos.encoder import encode_targets
 from mlx.od.fcos.nms import compute_nms
 from mlx.od.fcos.loss import focal_loss
@@ -15,8 +15,11 @@ class FPN(nn.Module):
     See https://arxiv.org/abs/1612.03144
     """
     def __init__(self, backbone_arch, out_channels=256, pretrained=True):
+        # Assumes backbone_arch in is Resnet family.
         super().__init__()
 
+        # Strides of cells in each level of the pyramid. Should be in
+        # descending order.
         self.strides = [32, 16, 8, 4]
 
         # Setup bottom-up backbone and hooks to capture output of stages.
@@ -44,6 +47,17 @@ class FPN(nn.Module):
         self.cross_conv4 = nn.Conv2d(512, out_channels, 1)
 
     def forward(self, input):
+        """Computes output of FPN.
+
+        Args:
+            input: (tensor) batch of images with shape (batch_sz, 3, h, w)
+
+        Returns:
+            (list) output of each level in the pyramid ordered same as
+                self.strides. Each output is tensor with shape
+                (batch_sz, 256, h*, w*) where h* and w* are height and width
+                for that level of the pyramid.
+        """
         self.backbone_out = {}
         self.backbone(input)
         # c* is cross output, d* is downsampling output
@@ -62,6 +76,7 @@ class FPN(nn.Module):
         return [d4, d3, d2, d1]
 
 class ConvBlock(nn.Module):
+    """Module containing sequence of conv2d, relu, and batch norm."""
     def __init__(self, in_channels, out_channels, kernel_size, padding=0):
         super().__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size,
@@ -74,6 +89,11 @@ class ConvBlock(nn.Module):
         return self.bn(x)
 
 class FCOSHead(nn.Module):
+    """Head for FCOS model.
+
+    Outputs reg_arr and label_arr for one level of the pyramid, which can
+    be decoded into boxes and labels.
+    """
     def __init__(self, num_labels, in_channels=256):
         super().__init__()
         c = in_channels
@@ -87,6 +107,20 @@ class FCOSHead(nn.Module):
         self.label_conv = nn.Conv2d(c, num_labels, 1)
 
     def forward(self, x, scale_param):
+        """Computes output of head.
+
+        Args:
+            x: (tensor) with shape (batch_sz, 256, h*, w*) which is assumed to
+                be output of one level of the FPN.
+            scale_param: (tensor) with single element used to scale the values
+                in the reg_arr and varies across levels of the pyramid.
+
+        Returns:
+            (dict) of form {
+                'reg_arr': <tensor with shape (batch_sz, 4, h*, w*)>,
+                'label_arr': <tensor with shape (batch_sz, num_labels, h*, w*>
+            }
+        """
         reg_arr = torch.exp(scale_param * self.reg_conv(self.reg_branch(x)))
         label_arr = self.label_conv(self.label_branch(x))
         return {'reg_arr': reg_arr, 'label_arr': label_arr}
@@ -108,6 +142,21 @@ class FCOS(nn.Module):
         self.head = FCOSHead(num_labels, in_channels=out_channels)
 
     def loss(self, out, targets):
+        """Compute loss for a single image.
+
+        Args:
+            out: (dict) the output of the heads for the whole pyramid
+            targets: (dict) the encoded targets for the whole pyramid
+
+            the format for both is:
+            (dict) of form {
+                'reg_arr': <tensor with shape (4, h*, w*)>,
+                'label_arr': <tensor with shape (num_labels, h*, w*>
+            }
+
+        Returns:
+            (tensor) with one float element containing loss
+        """
         lmbda = 1.0
         # Got rid of npos because it will result in divide by zero.
         # should we normalize by total number of cells in pyramid?
@@ -125,6 +174,24 @@ class FCOS(nn.Module):
         return loss
 
     def forward(self, input, targets=None):
+        """Compute output of FCOS.
+
+        Note: boxes are in (ymin, xmin, ymax, xmax) format with values between
+            0 and h or w. labels are class ids starting at 0.
+
+        Args:
+            input: (tensor) batch of images with shape (batch_sz, 3, h, w)
+            targets: (list) of length batch_sz with elements of form
+                {'boxes': <tensor with shape (n, 4)>,
+                 'labels': <tensor with shape (n,)>}
+        Returns:
+            if targets is None, returns list of length batch_sz with elements of
+            form {'boxes': <tensor with shape (n, 4)>,
+                  'labels': <tensor with shape (n,)>,
+                  'scores': <tensor with shape (n,)>}
+
+            if target is a list, returns the loss as a single element tensor
+        """
         fpn_out = self.fpn(input)
 
         batch_sz = input.shape[0]
@@ -148,7 +215,7 @@ class FCOS(nn.Module):
                         'reg_arr': v['reg_arr'][i],
                         'label_arr': v['label_arr'][i]
                     }
-                boxes, labels, scores = decode_targets(single_head_out)
+                boxes, labels, scores = decode_output(single_head_out)
                 good_inds = compute_nms(
                     boxes.detach().cpu().numpy(),
                     labels.detach().cpu().numpy(),
