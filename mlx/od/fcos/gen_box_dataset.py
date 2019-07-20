@@ -8,7 +8,8 @@ from mlx.filesystem.utils import make_dir, json_to_file
 
 def make_scene(img_size, max_boxes):
     img = np.zeros((3, img_size, img_size), dtype=np.uint8)
-    num_boxes = np.random.randint(0, max_boxes+1)
+    # in future, generate scenes with no boxes?
+    num_boxes = np.random.randint(1, max_boxes+1)
     boxes = np.empty((num_boxes, 4))
 
     for i in range(num_boxes):
@@ -29,8 +30,8 @@ def make_scene(img_size, max_boxes):
 @click.argument('output_dir')
 @click.option('--img-size', default=300)
 @click.option('--max-boxes', default=3)
-@click.option('--train-size', default=10)
-@click.option('--val-size', default=10)
+@click.option('--train-size', default=200)
+@click.option('--val-size', default=50)
 def main(output_dir, img_size, max_boxes, train_size, val_size):
     """Generate synthetic box dataset in Coco-format for testing obj det."""
     im_id = 0
@@ -40,8 +41,8 @@ def main(output_dir, img_size, max_boxes, train_size, val_size):
         nonlocal im_id
         nonlocal ann_id
 
-        split_dir = join(output_dir, split)
-        make_dir(split_dir)
+        image_dir = join(output_dir, 'train')
+        make_dir(image_dir)
 
         images = []
         annotations = []
@@ -50,7 +51,7 @@ def main(output_dir, img_size, max_boxes, train_size, val_size):
             img = np.transpose(img, (1, 2, 0))
             file_name = '{}.png'.format(im_id)
             Image.fromarray(img).save(
-                join(split_dir, file_name))
+                join(image_dir, file_name))
             images.append({
                 'id': im_id,
                 'height': img_size,
@@ -76,7 +77,7 @@ def main(output_dir, img_size, max_boxes, train_size, val_size):
         json_to_file(labels, join(output_dir, '{}.json'.format(split)))
 
     make_split('train', train_size)
-    make_split('val', val_size)
+    make_split('valid', val_size)
 
 if __name__ == '__main__':
     main()
