@@ -202,8 +202,9 @@ def main(dataset_name, test, s3_data, batch, debug):
             src = src[rand_inds]
         src = src.split_by_files(val_images)
         src = src.label_from_func(get_y_func, classes=classes)
-        src = src.transform(get_transforms(), size=size, tfm_y=True,
-                            resize_method=ResizeMethod.PAD)
+        if dataset_name != 'boxes':
+            src = src.transform(get_transforms(), size=size, tfm_y=True,
+                                resize_method=ResizeMethod.PAD)
         return src.databunch(path=data_dir, bs=bs, collate_fn=bb_pad_collate,
                              num_workers=num_workers)
 
