@@ -134,6 +134,7 @@ def setup_data(dataset_name):
         make_dir(output_dir)
         data_dir = '/opt/data/pascal2007/data'
         untar_data(URLs.PASCAL_2007, dest=data_dir)
+        data_dir = join(data_dir, 'pascal_2007')
         return output_dir, output_uri, data_dir
     elif dataset_name == 'boxes':
         output_uri = 's3://raster-vision-lf-dev/boxes/output'
