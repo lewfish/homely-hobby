@@ -179,11 +179,12 @@ class FCOS(nn.Module):
             npos = pos_indicator.reshape(-1).sum()
             min_npos = torch.ones_like(npos)
             npos = torch.max(min_npos, npos)
-            rl = rl.reshape(-1).sum() / npos
+            rl = rl.reshape(-1).sum()
+            l = (ll / npos) + lmbda * (rl / npos)
             if i == 0:
-                loss = ll + lmbda * rl
+                loss = l
             else:
-                loss += ll + lmbda * rl
+                loss += l
         return loss
 
     def forward(self, input, targets=None):
