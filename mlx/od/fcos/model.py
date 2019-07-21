@@ -106,6 +106,16 @@ class FCOSHead(nn.Module):
             *[ConvBlock(c, c, 3, padding=1) for i in range(4)])
         self.label_conv = nn.Conv2d(c, num_labels, 1)
 
+        # Initialize weights so outputs have more reasonable values, following
+        # Retinanet paper.
+        self.label_conv.weight.data.fill_(0.0)
+        prior = torch.tensor(0.01)
+        logit = torch.log(prior / (1 - prior))
+        self.label_conv.bias.data.fill_(logit.item())
+
+        self.reg_conv.weight.data.fill_(0.0)
+        self.reg_conv.bias.data.fill_(1.0)
+
     def forward(self, x, scale_param):
         """Computes output of head.
 
@@ -169,11 +179,12 @@ class FCOS(nn.Module):
             npos = pos_indicator.reshape(-1).sum()
             min_npos = torch.ones_like(npos)
             npos = torch.max(min_npos, npos)
-            rl = rl.reshape(-1).sum() / npos
+            rl = rl.reshape(-1).sum()
+            l = (ll / npos) + lmbda * (rl / npos)
             if i == 0:
-                loss = ll + lmbda * rl
+                loss = l
             else:
-                loss += ll + lmbda * rl
+                loss += l
         return loss
 
     def forward(self, input, targets=None):
@@ -202,6 +213,7 @@ class FCOS(nn.Module):
         strides = self.fpn.strides
         hws = [level_out.shape[2:] for level_out in fpn_out]
         max_box_sides = [256, 128, 64, 32]
+        iou_thresh = 0.5
         pyramid_shape = [
             (s, m, h, w) for s, m, (h, w) in zip(strides, max_box_sides, hws)]
 
@@ -222,7 +234,7 @@ class FCOS(nn.Module):
                 good_inds = compute_nms(
                     boxes.detach().cpu().numpy(),
                     labels.detach().cpu().numpy(),
-                    scores.detach().cpu().numpy())
+                    scores.detach().cpu().numpy(), iou_thresh=iou_thresh)
                 boxes, labels, scores = \
                     boxes[good_inds, :], labels[good_inds], scores[good_inds]
                 out.append({'boxes': boxes, 'labels': labels, 'scores': scores})
