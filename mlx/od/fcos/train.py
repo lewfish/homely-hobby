@@ -23,6 +23,7 @@ from fastai.core import ifnone
 from fastai.torch_core import OptLossFunc, OptOptimizer, Optional, Tuple, Union
 
 from mlx.od.fcos.model import FCOS
+from mlx.od.fcos.metrics import CocoMetric
 from mlx.batch_utils import submit_job
 from mlx.filesystem.utils import make_dir, sync_to_dir, zipdir, unzip, download_if_needed
 
@@ -194,7 +195,7 @@ def main(dataset_name, test, s3_data, batch, debug):
         classes = sorted(d['categories'], key=lambda x: x['id'])
         classes = [x['name'] for x in classes]
         classes = ['background'] + classes
-        num_classes = len(classes)
+        num_labels = len(classes)
 
     def get_data(bs, size):
         src = ObjectItemList.from_folder(img_path)
@@ -215,8 +216,9 @@ def main(dataset_name, test, s3_data, batch, debug):
     plot_data(data, output_dir)
 
     # Setup model
-    model = FCOS(backbone_arch, num_classes)
-    learn = Learner(data, model, path=output_dir)
+    model = FCOS(backbone_arch, num_labels)
+    metrics = [CocoMetric(num_labels)]
+    learn = Learner(data, model, path=output_dir, metrics=metrics)
     fastai.basic_train.loss_batch = loss_batch
     callbacks = [
         CSVLogger(learn, filename='log')
