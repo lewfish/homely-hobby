@@ -61,5 +61,25 @@ class TestCocoEval(unittest.TestCase):
         ap = compute_coco_eval(outputs, targets, num_labels)
         self.assertAlmostEqual(ap, 0.5)
 
+    def test_coco_eval3(self):
+        outputs = [
+            {
+                'boxes': torch.tensor([]),
+                'labels': torch.tensor([]),
+                'scores': torch.tensor([])
+            }
+        ]
+        targets = [
+            {
+                'boxes': torch.tensor([
+                    [0, 0, 100, 100],
+                ]),
+                'labels': torch.tensor([0])
+            }
+        ]
+        num_labels = 2
+        ap = compute_coco_eval(outputs, targets, num_labels)
+        self.assertEqual(ap, -1)
+
 if __name__ == '__main__':
     unittest.main()
