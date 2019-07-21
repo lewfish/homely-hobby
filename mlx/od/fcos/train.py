@@ -66,16 +66,18 @@ def plot_preds(data, learn, classes, output_dir, max_plots=50):
     zip_path = join(output_dir, 'preds.zip')
     make_dir(preds_dir, force_empty=True)
     model = learn.model
+    device = list(model.parameters())[0].device
     model.eval()
     ds = data.valid_ds
     for i, (x, y) in enumerate(ds):
         if i == max_plots:
             break
-        z = model(x.data.unsqueeze(0))[0]
+        z = model(x.data.unsqueeze(0).to(device=device))[0]
         h, w = x.shape[1:]
-
+        boxes = z['boxes'].cpu()
+        labels = z['labels'].cpu()
         if z['boxes'].shape[0] > 0:
-            z = ImageBBox.create(h, w, z['boxes'], z['labels'], classes=classes,
+            z = ImageBBox.create(h, w, boxes, labels, classes=classes,
                                  scale=True)
             x.show(y=z)
         else:
@@ -165,7 +167,7 @@ def main(dataset_name, test, s3_data, batch, debug):
     bs = 8
     size = 300
     num_workers = 4
-    num_epochs = 30
+    num_epochs = 50
     lr = 1e-4
     if test:
         bs = 1
