@@ -5,6 +5,7 @@ from os.path import join, isdir, dirname
 import shutil
 import tempfile
 
+from PIL import Image
 import numpy as np
 import click
 import matplotlib
@@ -70,11 +71,15 @@ def plot_preds(data, learn, classes, output_dir, max_plots=50):
     device = list(model.parameters())[0].device
     model.eval()
     ds = data.valid_ds
-    for i, (x, y) in enumerate(ds):
-        if i == max_plots:
+    for img_id, (x, y) in enumerate(ds):
+        if img_id == max_plots:
             break
-        z = model(x.data.unsqueeze(0).to(device=device))[0]
+        x_data = x.data.unsqueeze(0).to(device=device)
+        z, head_out = model(x_data, get_head_out=True)
+
+        # Plot predictions
         h, w = x.shape[1:]
+        z = z[0]
         boxes = z['boxes'].cpu()
         labels = z['labels'].cpu()
         if z['boxes'].shape[0] > 0:
@@ -83,8 +88,47 @@ def plot_preds(data, learn, classes, output_dir, max_plots=50):
             x.show(y=z)
         else:
             x.show()
-        plt.savefig(join(preds_dir, '{}.png'.format(i)), figsize=(3, 3))
+        plt.savefig(join(preds_dir, '{}.png'.format(img_id)), figsize=(3, 3))
         plt.close()
+
+        # Plot original image
+        img = Image.fromarray(
+            (x.data.cpu().numpy() * 255).transpose(1, 2, 0).astype(np.uint8))
+        img.save(join(preds_dir, '{}-orig.png'.format(img_id)))
+
+        # Plot raw output of network
+        for s, out in head_out.items():
+            # Plot probs for each label
+            label_arr = out['label_arr'][0].detach().cpu()
+            label_probs = torch.sigmoid(label_arr).numpy()
+
+            plt.gca()
+            num_labels = len(classes)
+            for l in range(1, num_labels):
+                plt.subplot(5, 5, l)
+                plt.title(classes[l])
+                a = label_probs[l]
+                plt.imshow(a)
+
+            plt.suptitle('label probs for stride={}'.format(s))
+            plt.savefig(
+                join(preds_dir, '{}-{}-label-arr.png'.format(img_id, s)),
+                figsize=(3, 3))
+
+            # Plot top, left, bottom, right arrays.
+            reg_arr = out['reg_arr'][0].detach().cpu().numpy()
+            plt.gca()
+            directions = ['top', 'left', 'bottom', 'right']
+            for di, d in enumerate(directions):
+                plt.subplot(1, 4, di + 1)
+                plt.title(d)
+                a = reg_arr[di]
+                plt.imshow(a)
+
+            plt.suptitle('distance to box edge for stride={}'.format(s))
+            plt.savefig(
+                join(preds_dir, '{}-{}-reg-arr.png'.format(img_id, s)),
+                figsize=(10, 10))
 
     zipdir(preds_dir, zip_path)
     shutil.rmtree(preds_dir)
@@ -165,10 +209,11 @@ def main(dataset_name, test, s3_data, batch, debug):
 
     # Setup options
     backbone_arch = 'resnet18'
+    levels = [0]
     bs = 8
     size = 300
     num_workers = 4
-    num_epochs = 50
+    num_epochs = 100
     lr = 1e-4
     if test:
         bs = 1
@@ -203,11 +248,15 @@ def main(dataset_name, test, s3_data, batch, debug):
             rand_inds = np.random.choice(
                 list(range(len(src))), (num_debug_images,), replace=False)
             src = src[rand_inds]
-        src = src.split_by_files(val_images)
+
+        if dataset_name == 'pascal2007':
+            src = src.split_by_files(val_images[0:int(len(trn_images) * 0.2)])
+        else:
+            src = src.split_by_files(val_images)
+
         src = src.label_from_func(get_y_func, classes=classes)
         if dataset_name != 'boxes':
-            src = src.transform(get_transforms(), size=size, tfm_y=True,
-                                resize_method=ResizeMethod.PAD)
+            src = src.transform(get_transforms(), size=size, tfm_y=True)
         return src.databunch(path=data_dir, bs=bs, collate_fn=bb_pad_collate,
                              num_workers=num_workers)
 
@@ -216,7 +265,7 @@ def main(dataset_name, test, s3_data, batch, debug):
     plot_data(data, output_dir)
 
     # Setup model
-    model = FCOS(backbone_arch, num_labels)
+    model = FCOS(backbone_arch, num_labels, levels=levels)
     metrics = [CocoMetric(num_labels)]
     learn = Learner(data, model, path=output_dir, metrics=metrics)
     fastai.basic_train.loss_batch = loss_batch

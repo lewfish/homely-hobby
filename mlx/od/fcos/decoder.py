@@ -1,4 +1,5 @@
 import torch
+import math
 
 def decode_level_output(reg_arr, label_arr, stride, score_thresh=0.05):
     """Decode output of head for one level of the pyramid for one image.
@@ -14,6 +15,8 @@ def decode_level_output(reg_arr, label_arr, stride, score_thresh=0.05):
     Returns:
         (boxes, labels, scores)
     """
+    # Convert from probability to logit
+    score_thresh = math.log(score_thresh / (1-score_thresh))
     device = reg_arr.device
     h, w = reg_arr.shape[1:]
     pos_arr = torch.empty((2, h, w), device=device)
