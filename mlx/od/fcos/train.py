@@ -5,6 +5,7 @@ from os.path import join, isdir, dirname
 import shutil
 import tempfile
 
+from PIL import Image
 import numpy as np
 import click
 import matplotlib
@@ -85,6 +86,10 @@ def plot_preds(data, learn, classes, output_dir, max_plots=50):
             x.show()
         plt.savefig(join(preds_dir, '{}.png'.format(i)), figsize=(3, 3))
         plt.close()
+
+        img = Image.fromarray(
+            (x.data.cpu().numpy() * 255).transpose(1, 2, 0).astype(np.uint8))
+        img.save(join(preds_dir, '{}-orig.png'.format(i)))
 
     zipdir(preds_dir, zip_path)
     shutil.rmtree(preds_dir)
