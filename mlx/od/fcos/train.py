@@ -209,10 +209,11 @@ def main(dataset_name, test, s3_data, batch, debug):
 
     # Setup options
     backbone_arch = 'resnet18'
+    levels = [0]
     bs = 8
     size = 300
     num_workers = 4
-    num_epochs = 50
+    num_epochs = 100
     lr = 1e-4
     if test:
         bs = 1
@@ -264,7 +265,7 @@ def main(dataset_name, test, s3_data, batch, debug):
     plot_data(data, output_dir)
 
     # Setup model
-    model = FCOS(backbone_arch, num_labels)
+    model = FCOS(backbone_arch, num_labels, levels=levels)
     metrics = [CocoMetric(num_labels)]
     learn = Learner(data, model, path=output_dir, metrics=metrics)
     fastai.basic_train.loss_batch = loss_batch
