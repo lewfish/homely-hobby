@@ -247,7 +247,12 @@ def main(dataset_name, test, s3_data, batch, debug):
             rand_inds = np.random.choice(
                 list(range(len(src))), (num_debug_images,), replace=False)
             src = src[rand_inds]
-        src = src.split_by_files(val_images)
+
+        if dataset_name == 'pascal2007':
+            src = src.split_by_files(val_images[0:int(len(trn_images) * 0.2)])
+        else:
+            src = src.split_by_files(val_images)
+
         src = src.label_from_func(get_y_func, classes=classes)
         if dataset_name != 'boxes':
             src = src.transform(get_transforms(), size=size, tfm_y=True)
