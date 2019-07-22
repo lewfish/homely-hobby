@@ -14,13 +14,17 @@ class FPN(nn.Module):
 
     See https://arxiv.org/abs/1612.03144
     """
-    def __init__(self, backbone_arch, out_channels=256, pretrained=True):
+    def __init__(self, backbone_arch, out_channels=256, pretrained=True,
+                 levels=None):
         # Assumes backbone_arch in is Resnet family.
         super().__init__()
 
         # Strides of cells in each level of the pyramid. Should be in
         # descending order.
         self.strides = [32, 16, 8, 4]
+        self.levels = levels
+        if levels is not None:
+            self.strides = [self.strides[l] for l in levels]
 
         # Setup bottom-up backbone and hooks to capture output of stages.
         # Assumes there is layer1, 2, 3, 4, which is true for Resnets.
@@ -73,7 +77,10 @@ class FPN(nn.Module):
         c1 = self.cross_conv1(self.backbone_out['layer1'])
         d1 = c1 + nn.functional.interpolate(d2, c1.shape[2:])
 
-        return [d4, d3, d2, d1]
+        out = [d4, d3, d2, d1]
+        if self.levels is not None:
+            out = [out[l] for l in self.levels]
+        return out
 
 class ConvBlock(nn.Module):
     """Module containing sequence of conv2d, relu, and batch norm."""
@@ -140,13 +147,15 @@ class FCOS(nn.Module):
 
     See https://arxiv.org/abs/1904.01355
     """
-    def __init__(self, backbone_arch, num_labels, pretrained=True):
+    def __init__(self, backbone_arch, num_labels, pretrained=True,
+                 levels=None):
         super().__init__()
 
         out_channels = 256
         self.num_labels = num_labels
+        self.levels = levels
         self.fpn = FPN(backbone_arch, out_channels=out_channels,
-                       pretrained=pretrained)
+                       pretrained=pretrained, levels=levels)
         num_scales = len(self.fpn.strides)
         self.scale_params = nn.Parameter(torch.ones((num_scales,)))
         self.head = FCOSHead(num_labels, in_channels=out_channels)
@@ -213,6 +222,8 @@ class FCOS(nn.Module):
         strides = self.fpn.strides
         hws = [level_out.shape[2:] for level_out in fpn_out]
         max_box_sides = [256, 128, 64, 32]
+        if self.levels is not None:
+            max_box_sides = [max_box_sides[l] for l in self.levels]
         iou_thresh = 0.5
         pyramid_shape = [
             (s, m, h, w) for s, m, (h, w) in zip(strides, max_box_sides, hws)]
