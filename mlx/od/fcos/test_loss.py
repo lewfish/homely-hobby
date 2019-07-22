@@ -9,7 +9,7 @@ class TestFocalLoss(unittest.TestCase):
         gamma = 2
         alpha = 0.25
         p = torch.tensor([0.2, 0.7])
-        # do inverse of sigmoid
+        # convert from probability to logit
         output = torch.log(p / (1-p))
         target = torch.tensor([0.0, 1.0])
 
