@@ -196,7 +196,7 @@ class FCOS(nn.Module):
                 loss += l
         return loss
 
-    def forward(self, input, targets=None):
+    def forward(self, input, targets=None, get_head_out=False):
         """Compute output of FCOS.
 
         Note: boxes are in (ymin, xmin, ymax, xmax) format with values between
@@ -249,6 +249,8 @@ class FCOS(nn.Module):
                 boxes, labels, scores = \
                     boxes[good_inds, :], labels[good_inds], scores[good_inds]
                 out.append({'boxes': boxes, 'labels': labels, 'scores': scores})
+            if get_head_out:
+                return out, head_out
             return out
 
         for i, single_target in enumerate(targets):
@@ -267,4 +269,7 @@ class FCOS(nn.Module):
                 loss = self.loss(single_head_out, encoded_targets)
             else:
                 loss += self.loss(single_head_out, encoded_targets)
-        return loss / batch_sz
+        loss = loss / batch_sz
+        if get_head_out:
+            return loss, head_out
+        return loss
