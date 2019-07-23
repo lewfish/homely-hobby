@@ -152,7 +152,7 @@ def main(dataset_name, test, s3_data, batch, debug, profile):
     bs = 8
     size = 300
     num_workers = 4
-    num_epochs = 100
+    num_epochs = 30
     lr = 1e-4
     if test:
         bs = 1
@@ -189,7 +189,7 @@ def main(dataset_name, test, s3_data, batch, debug, profile):
             src = src[rand_inds]
 
         if dataset_name == 'pascal2007':
-            src = src.split_by_files(val_images[0:int(len(trn_images) * 0.2)])
+            src = src.split_by_files(val_images[0:int(len(trn_images) * 0.1)])
         else:
             src = src.split_by_files(val_images)
 
