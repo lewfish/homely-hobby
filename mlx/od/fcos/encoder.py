@@ -142,6 +142,9 @@ def encode_targets(boxes, labels, pyramid_shape, num_labels):
     boxes, labels = sort_boxes(boxes, labels)
     targets = init_targets(pyramid_shape, num_labels, device=device)
 
+    if boxes.shape[0] == 0:
+        return targets
+
     # for each box, get arrays for matching stride and encode box
     box_sizes, _ = torch.max(boxes[:, 2:] - boxes[:, 0:2], dim=1)
     for box, label, box_size in zip(boxes, labels, box_sizes):
