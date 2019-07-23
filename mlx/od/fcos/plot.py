@@ -55,33 +55,46 @@ def plot_preds(data, model, classes, output_dir, max_plots=50, score_thresh=0.4)
             # Plot probs for each label
             label_arr = level_out['label_arr'][0].detach().cpu()
             label_probs = torch.sigmoid(label_arr).numpy()
-
             plt.gca()
             num_labels = len(classes)
             for l in range(1, num_labels):
                 plt.subplot(5, 5, l)
                 plt.title(classes[l])
                 a = label_probs[l]
-                plt.imshow(a)
+                plt.imshow(a, vmin=0., vmax=1.)
+                plt.gca().axes.get_xaxis().set_visible(False)
+                plt.gca().axes.get_yaxis().set_visible(False)
 
+            plt.subplots_adjust(bottom=0.1, right=0.8, top=0.9)
             plt.suptitle('label probs for stride={}'.format(stride))
             plt.savefig(
-                join(preds_dir, '{}-{}-label-arr.png'.format(img_id, stride)),
-                figsize=(3, 3))
+                join(preds_dir, '{}-{}-label-arr.png'.format(img_id, stride)))
 
-            # Plot top, left, bottom, right arrays.
+            # Plot top, left, bottom, right from reg_arr and center_arr.
             reg_arr = level_out['reg_arr'][0].detach().cpu().numpy()
+            center_arr = level_out['center_arr'][0][0].detach().cpu()
+            center_probs = torch.sigmoid(center_arr).numpy()
+
             plt.gca()
             directions = ['top', 'left', 'bottom', 'right']
+            max_reg_val = np.amax(reg_arr)
             for di, d in enumerate(directions):
-                plt.subplot(1, 4, di + 1)
+                plt.subplot(1, 5, di + 1)
                 plt.title(d)
                 a = reg_arr[di]
-                plt.imshow(a)
+                plt.imshow(a, vmin=0, vmax=max_reg_val)
+                plt.gca().axes.get_xaxis().set_visible(False)
+                plt.gca().axes.get_yaxis().set_visible(False)
 
-            plt.suptitle('distance to box edge for stride={}'.format(stride))
+            plt.subplot(1, 5, 5)
+            plt.title('centerness')
+            plt.imshow(center_probs, vmin=0, vmax=1)
+            plt.gca().axes.get_xaxis().set_visible(False)
+            plt.gca().axes.get_yaxis().set_visible(False)
+
+            plt.suptitle('reg_arr and center_arr for stride={}'.format(stride))
             plt.savefig(
-                join(preds_dir, '{}-{}-reg-arr.png'.format(img_id, stride)),
+                join(preds_dir, '{}-{}-reg-center-arr.png'.format(img_id, stride)),
                 figsize=(10, 10))
 
     zipdir(preds_dir, zip_path)
