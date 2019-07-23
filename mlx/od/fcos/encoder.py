@@ -1,6 +1,6 @@
 import torch
 
-def encode_box(reg_arr, label_arr, stride, box, label):
+def encode_box(reg_arr, label_arr, center_arr, stride, box, label):
     """Encode single box/label into array format for single level of pyramid.
 
     The array format is fed into the loss function and is in the same format
@@ -35,26 +35,35 @@ def encode_box(reg_arr, label_arr, stride, box, label):
     nw_tlbr = torch.cat((nw_yx - box[0:2], box[2:] - nw_yx))
 
     box_arr_shape = (4,) + tuple((se_ij - nw_ij + 1).tolist())
-    box_arr = torch.empty(box_arr_shape, device=device)
-    box_arr[:, :, :] = nw_tlbr[:, None, None]
+    box_reg_arr = torch.empty(box_arr_shape, device=device)
+    box_reg_arr[:, :, :] = nw_tlbr[:, None, None]
 
     row_incs = torch.arange(
-        0, box_arr.shape[1] * stride, stride, dtype=torch.float32,
+        0, box_reg_arr.shape[1] * stride, stride, dtype=torch.float32,
         device=device)
     col_incs = torch.arange(
-        0, box_arr.shape[2] * stride, stride, dtype=torch.float32,
+        0, box_reg_arr.shape[2] * stride, stride, dtype=torch.float32,
         device=device)
 
-    box_arr[0, :, :] += row_incs[:, None]
-    box_arr[1, :, :] += col_incs[None, :]
-    box_arr[2, :, :] -= row_incs[:, None]
-    box_arr[3, :, :] -= col_incs[None, :]
+    box_reg_arr[0, :, :] += row_incs[:, None]
+    box_reg_arr[1, :, :] += col_incs[None, :]
+    box_reg_arr[2, :, :] -= row_incs[:, None]
+    box_reg_arr[3, :, :] -= col_incs[None, :]
 
     nw_ij, se_ij = nw_ij.tolist(), se_ij.tolist()
-    reg_arr[:, nw_ij[0]:se_ij[0]+1, nw_ij[1]:se_ij[1]+1] = box_arr
+    reg_arr[:, nw_ij[0]:se_ij[0]+1, nw_ij[1]:se_ij[1]+1] = box_reg_arr
 
     label_arr[:, nw_ij[0]:se_ij[0]+1, nw_ij[1]:se_ij[1]+1] = 0
     label_arr[label, nw_ij[0]:se_ij[0]+1, nw_ij[1]:se_ij[1]+1] = 1
+
+    t = box_reg_arr[0]
+    l = box_reg_arr[1]
+    b = box_reg_arr[2]
+    r = box_reg_arr[3]
+    box_center_arr = torch.sqrt(
+        (torch.min(l, r) / torch.max(l, r)) *
+        (torch.min(t, b) / torch.max(t, b)))
+    center_arr[0, nw_ij[0]:se_ij[0]+1, nw_ij[1]:se_ij[1]+1] = box_center_arr
 
 def get_stride(box_size, pyramid_shape):
     """Get level of pyramid to use for a box.
@@ -90,7 +99,9 @@ def init_targets(pyramid_shape, num_labels, device='cpu'):
     for stride, _, h, w in pyramid_shape:
         reg_arr = torch.zeros((4, h, w), device=device)
         label_arr = torch.zeros((num_labels, h, w), device=device)
-        targets[stride] = {'reg_arr': reg_arr, 'label_arr': label_arr}
+        center_arr = torch.zeros((1, h, w), device=device)
+        targets[stride] = {
+            'reg_arr': reg_arr, 'label_arr': label_arr, 'center_arr': center_arr}
     return targets
 
 def sort_boxes(boxes, labels):
@@ -133,6 +144,8 @@ def encode_targets(boxes, labels, pyramid_shape, num_labels):
         stride = get_stride(box_size, pyramid_shape)
         reg_arr = targets[stride]['reg_arr']
         label_arr = targets[stride]['label_arr']
-        encode_box(reg_arr, label_arr, stride, box, int(label.item()))
+        center_arr = targets[stride]['center_arr']
+        encode_box(
+            reg_arr, label_arr, center_arr, stride, box, int(label.item()))
 
     return targets

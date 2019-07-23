@@ -12,10 +12,12 @@ class TestDecodeLevelOutput(unittest.TestCase):
         exp_labels = torch.tensor([0, 1])
         reg_arr = torch.zeros((4, h, w))
         label_arr = torch.zeros((num_labels, h, w))
+        center_arr = torch.zeros((1, h, w))
         for box, label in zip(exp_boxes, exp_labels):
-            encode_box(reg_arr, label_arr, stride, box, label.int().item())
-        boxes, labels, scores = decode_level_output(
-            reg_arr, label_arr, stride, score_thresh=score_thresh)
+            encode_box(reg_arr, label_arr, center_arr, stride, box,
+                       label.int().item())
+        boxes, labels, scores, centerness = decode_level_output(
+            reg_arr, label_arr, center_arr, stride, score_thresh=score_thresh)
 
         def make_tuple_set(boxes, labels):
             return set([tuple(b.int().tolist()) + (l.int().item(),)
@@ -88,6 +90,27 @@ class TestDecodeLevelOutput(unittest.TestCase):
         ])
         self.encode_decode_level(stride, h, w, exp_boxes)
 
+    def test_decode_centerness(self):
+        reg_arr = torch.zeros((4, 3, 3))
+        label_arr = torch.zeros((1, 3, 3))
+        center_arr = torch.zeros((1, 3, 3))
+        stride = 4
+
+        label_arr[0, 0, 0] = 0.5
+        label_arr[0, 0, 1] = 0.5
+        center_arr[0, 0, 0] = 0.1
+        center_arr[0, 0, 1] = 0.2
+        center_arr[0, 1, 0] = 0.3
+        center_arr[0, 1, 1] = 0.4
+
+        boxes, labels, scores, centerness = decode_level_output(
+            reg_arr, label_arr, center_arr, stride)
+
+        exp_labels = torch.tensor([0, 0])
+        exp_centerness = torch.tensor([0.1, 0.2])
+        self.assertTrue(labels.equal(exp_labels))
+        self.assertTrue(centerness.equal(exp_centerness))
+
 class TestDecodeOutput(unittest.TestCase):
     def encode_decode_output(self, pyramid_shape, exp_boxes, exp_labels):
         score_thresh = 0.2
@@ -95,7 +118,7 @@ class TestDecodeOutput(unittest.TestCase):
 
         targets = encode_targets(
             exp_boxes, exp_labels, pyramid_shape, num_labels)
-        boxes, labels, scores = decode_output(
+        boxes, labels, scores, centerness = decode_output(
             targets, score_thresh=score_thresh)
 
         def make_tuple_set(boxes, labels):

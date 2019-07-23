@@ -30,6 +30,8 @@ class TestFCOSHead(unittest.TestCase):
             list(head_out['reg_arr'].shape), [1, 4, h, w])
         self.assertListEqual(
             list(head_out['label_arr'].shape), [1, num_labels, h, w])
+        self.assertListEqual(
+            list(head_out['center_arr'].shape), [1, 1, h, w])
 
 class TestFCOS(unittest.TestCase):
     def test_fcos(self):

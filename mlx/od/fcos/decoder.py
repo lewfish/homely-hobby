@@ -1,7 +1,7 @@
 import torch
 import math
 
-def decode_level_output(reg_arr, label_arr, stride, score_thresh=0.05):
+def decode_level_output(reg_arr, label_arr, center_arr, stride, score_thresh=0.05):
     """Decode output of head for one level of the pyramid for one image.
 
     Args:
@@ -31,10 +31,12 @@ def decode_level_output(reg_arr, label_arr, stride, score_thresh=0.05):
     scores, labels = torch.max(label_arr, dim=0)
 
     boxes = boxes.reshape(4, -1).transpose(1, 0)
-    scores = scores.reshape(-1)
     labels = labels.reshape(-1)
+    scores = scores.reshape(-1)
+    centerness = center_arr.reshape(-1)
     keep_inds = scores > score_thresh
-    return boxes[keep_inds, :], labels[keep_inds], scores[keep_inds]
+    return (boxes[keep_inds, :], labels[keep_inds], scores[keep_inds],
+            centerness[keep_inds])
 
 def decode_output(output, score_thresh=0.05):
     """Decode output of heads for all levels of pyramid for one image.
@@ -50,14 +52,17 @@ def decode_output(output, score_thresh=0.05):
     Returns:
         (boxes, labels, scores)
     """
-    all_boxes, all_labels, all_scores = [], [], []
-    for stride, arrs in output.items():
-        reg_arr = arrs['reg_arr']
-        label_arr = arrs['label_arr']
-        boxes, labels, scores = decode_level_output(
-            reg_arr, label_arr, stride, score_thresh=score_thresh)
+    all_boxes, all_labels, all_scores, all_centerness = [], [], [], []
+    for stride, level_out in output.items():
+        reg_arr = level_out['reg_arr']
+        label_arr = level_out['label_arr']
+        center_arr = level_out['center_arr']
+        boxes, labels, scores, centerness = decode_level_output(
+            reg_arr, label_arr, center_arr, stride, score_thresh=score_thresh)
         all_boxes.append(boxes)
         all_labels.append(labels)
         all_scores.append(scores)
+        all_centerness.append(centerness)
 
-    return torch.cat(all_boxes), torch.cat(all_labels), torch.cat(all_scores)
+    return (torch.cat(all_boxes), torch.cat(all_labels), torch.cat(all_scores),
+            torch.cat(all_centerness))
