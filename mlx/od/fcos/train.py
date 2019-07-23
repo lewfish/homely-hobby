@@ -27,15 +27,21 @@ from mlx.od.fcos.plot import plot_preds
 from mlx.batch_utils import submit_job
 from mlx.filesystem.utils import make_dir, sync_to_dir, zipdir, unzip, download_if_needed
 
-def run_on_batch(dataset_name, test, debug):
+def run_on_batch(dataset_name, test, debug, profile):
     job_name = 'mlx_train_fcos-' + str(uuid.uuid4())
     job_def = 'lewfishPyTorchCustomGpuJobDefinition'
     job_queue = 'lewfishRasterVisionGpuJobQueue'
     cmd_list = ['python', '-m', 'mlx.od.fcos.train', dataset_name, '--s3-data']
+
     if debug:
         cmd_list = [
             'python', '-m', 'ptvsd', '--host', '0.0.0.0', '--port', '6006',
             '--wait', '-m', 'mlx.od.fcos.train', dataset_name, '--s3-data']
+
+    if profile:
+        cmd_list = ['kernprof', '-v', '-l', '/opt/src/mlx/od/fcos/train.py',
+                    dataset_name, '--s3-data']
+
     if test:
         cmd_list.append('--test')
     submit_job(job_name, job_def, job_queue, cmd_list)
@@ -135,9 +141,10 @@ def setup_data(dataset_name):
 @click.option('--s3-data', is_flag=True, help='Use data and store results on S3')
 @click.option('--batch', is_flag=True, help='Submit Batch job for full experiment')
 @click.option('--debug', is_flag=True, help='Run via debugger')
-def main(dataset_name, test, s3_data, batch, debug):
+@click.option('--profile', is_flag=True, help='Run via profiler')
+def main(dataset_name, test, s3_data, batch, debug, profile):
     if batch:
-        run_on_batch(dataset_name, test, debug)
+        run_on_batch(dataset_name, test, debug, profile)
 
     # Setup options
     backbone_arch = 'resnet18'
