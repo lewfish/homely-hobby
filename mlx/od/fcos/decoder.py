@@ -7,16 +7,15 @@ def decode_level_output(reg_arr, label_arr, stride, score_thresh=0.05):
     Args:
         reg_arr: (tensor) with shape (4, h, w). The first dimension ranges over
             t, l, b, r (ie. top, left, bottom, right).
-        label_arr: (tensor) with shape (num_labels, h, w).
+        label_arr: (tensor) with shape (num_labels, h, w) containing
+            probabilities
         stride: (int) the stride of the level of the pyramid
-        score_thresh: (float) score threshold used to determine if a box is
-            present at a cell
+        score_thresh: (float) probability score threshold used to determine
+            if a box is present at a cell
 
     Returns:
         (boxes, labels, scores)
     """
-    # Convert from probability to logit
-    score_thresh = math.log(score_thresh / (1-score_thresh))
     device = reg_arr.device
     h, w = reg_arr.shape[1:]
     pos_arr = torch.empty((2, h, w), device=device)
@@ -43,9 +42,10 @@ def decode_output(output, score_thresh=0.05):
     Args:
         output: (dict) where keys are strides, values are dicts of form
             {'reg_arr': <tensor>, 'label_arr': <tensor>} where reg_arr.shape is
-            (4, h, w) and label_arr.shape is (num_labels, h, w)
-        score_thresh: (float) score threshold used to determine if a box is
-            present at a cell
+            (4, h, w) and label_arr.shape is (num_labels, h, w). label_arr
+            contains probabilities
+        score_thresh: (float) probability score threshold used to determine
+            if a box is present at a cell
 
     Returns:
         (boxes, labels, scores)
