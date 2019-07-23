@@ -267,10 +267,11 @@ class FCOS(nn.Module):
                     }
                 boxes, labels, scores, centerness = decode_output(single_head_out)
                 nms_scores = scores * centerness
-                good_inds = compute_nms(
-                    boxes.detach().cpu().numpy(),
-                    labels.detach().cpu().numpy(),
-                    nms_scores.detach().cpu().numpy(), iou_thresh=iou_thresh)
+
+                np_boxes = boxes.detach().cpu().numpy()
+                np_labels = labels.detach().cpu().numpy()
+                np_nms_scores = nms_scores.detach().cpu().numpy()
+                good_inds = compute_nms(np_boxes, np_labels, np_nms_scores, iou_thresh=iou_thresh)
                 boxes, labels, scores = \
                     boxes[good_inds, :], labels[good_inds], scores[good_inds]
                 out.append({'boxes': boxes, 'labels': labels, 'scores': scores})
