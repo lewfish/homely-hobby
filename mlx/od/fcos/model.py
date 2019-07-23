@@ -113,15 +113,22 @@ class FCOSHead(nn.Module):
             *[ConvBlock(c, c, 3, padding=1) for i in range(4)])
         self.label_conv = nn.Conv2d(c, num_labels, 1)
 
+        self.center_conv = nn.Conv2d(c, 1, 1)
+
         # Initialize weights so outputs have more reasonable values, following
         # Retinanet paper.
+        self.reg_conv.weight.data.fill_(0.0)
+        self.reg_conv.bias.data.fill_(1.0)
+
         self.label_conv.weight.data.fill_(0.0)
         prior = torch.tensor(0.01)
         logit = torch.log(prior / (1 - prior))
         self.label_conv.bias.data.fill_(logit.item())
 
-        self.reg_conv.weight.data.fill_(0.0)
-        self.reg_conv.bias.data.fill_(1.0)
+        self.center_conv.weight.data.fill_(0.0)
+        prior = torch.tensor(0.5)
+        logit = torch.log(prior / (1 - prior))
+        self.center_conv.bias.data.fill_(logit)
 
     def forward(self, x, scale_param):
         """Computes output of head.
@@ -140,8 +147,10 @@ class FCOSHead(nn.Module):
             label_arr contains logits
         """
         reg_arr = torch.exp(scale_param * self.reg_conv(self.reg_branch(x)))
-        label_arr = self.label_conv(self.label_branch(x))
-        return {'reg_arr': reg_arr, 'label_arr': label_arr}
+        label_branch_arr = self.label_branch(x)
+        label_arr = self.label_conv(label_branch_arr)
+        center_arr = self.center_conv(label_branch_arr)
+        return {'reg_arr': reg_arr, 'label_arr': label_arr, 'center_arr': center_arr}
 
 class FCOS(nn.Module):
     """Fully convolutional one stage object detector
@@ -164,8 +173,8 @@ class FCOS(nn.Module):
     def loss(self, out, targets):
         """Compute loss for a single image.
 
-        Note: the label_arr for output is assumed to contain logits,
-            and for targets probabilities.
+        Note: the label_arr and center_arr for output is assumed to contain
+        logits, and is assumed to contain probabilities for targets.
 
         Args:
             out: (dict) the output of the heads for the whole pyramid
@@ -174,7 +183,8 @@ class FCOS(nn.Module):
             the format for both is:
             (dict) of form {
                 'reg_arr': <tensor with shape (4, h*, w*)>,
-                'label_arr': <tensor with shape (num_labels, h*, w*>
+                'label_arr': <tensor with shape (num_labels, h*, w*)>,
+                'center_arr': <tensor with shape (1, h*, w*)>
             }
 
         Returns:
@@ -184,16 +194,21 @@ class FCOS(nn.Module):
         # should we normalize by total number of cells in pyramid?
         for i, s in enumerate(out.keys()):
             pos_indicator = targets[s]['label_arr'].sum(dim=0)
-            ll = focal_loss(
-                out[s]['label_arr'], targets[s]['label_arr'])
-            rl = pos_indicator.unsqueeze(0) * nn.functional.l1_loss(
-                out[s]['reg_arr'], targets[s]['reg_arr'], reduction='none')
             # Put lower bound on npos to avoid dividing by zero.
             npos = pos_indicator.reshape(-1).sum()
             min_npos = torch.ones_like(npos)
             npos = torch.max(min_npos, npos)
+
+            ll = focal_loss(
+                out[s]['label_arr'], targets[s]['label_arr'])
+            rl = pos_indicator.unsqueeze(0) * nn.functional.l1_loss(
+                out[s]['reg_arr'], targets[s]['reg_arr'], reduction='none')
             rl = rl.reshape(-1).sum()
-            l = (ll / npos) + lmbda * (rl / npos)
+            cl = pos_indicator.unsqueeze(0) * nn.functional.binary_cross_entropy_with_logits(
+                out[s]['center_arr'], targets[s]['center_arr'], reduction='none')
+            cl = cl.reshape(-1).sum()
+
+            l = (ll / npos) + lmbda * (rl / npos) + (cl / npos)
             if i == 0:
                 loss = l
             else:
@@ -243,17 +258,19 @@ class FCOS(nn.Module):
             for i in range(batch_sz):
                 single_head_out = {}
                 for k, v in head_out.items():
-                    # Convert logits to probabilities since decode expects
-                    # probabilities.
+                    # Convert logits in label_arr and center_arr
+                    # to probabilities since decode expects probabilities.
                     single_head_out[k] = {
                         'reg_arr': v['reg_arr'][i],
-                        'label_arr': torch.sigmoid(v['label_arr'][i])
+                        'label_arr': torch.sigmoid(v['label_arr'][i]),
+                        'center_arr': torch.sigmoid(v['center_arr'][i])
                     }
-                boxes, labels, scores = decode_output(single_head_out)
+                boxes, labels, scores, centerness = decode_output(single_head_out)
+                nms_scores = scores * centerness
                 good_inds = compute_nms(
                     boxes.detach().cpu().numpy(),
                     labels.detach().cpu().numpy(),
-                    scores.detach().cpu().numpy(), iou_thresh=iou_thresh)
+                    nms_scores.detach().cpu().numpy(), iou_thresh=iou_thresh)
                 boxes, labels, scores = \
                     boxes[good_inds, :], labels[good_inds], scores[good_inds]
                 out.append({'boxes': boxes, 'labels': labels, 'scores': scores})
@@ -269,9 +286,13 @@ class FCOS(nn.Module):
 
             single_head_out = {}
             for s in strides:
+                # Don't convert logits to probabilities for output since
+                # loss function expects logits for output
+                # (and probabilities for targets)
                 single_head_out[s] = {
                     'reg_arr': head_out[s]['reg_arr'][i],
-                    'label_arr': head_out[s]['label_arr'][i]
+                    'label_arr': head_out[s]['label_arr'][i],
+                    'center_arr': head_out[s]['center_arr'][i]
                 }
             if i == 0:
                 loss = self.loss(single_head_out, encoded_targets)

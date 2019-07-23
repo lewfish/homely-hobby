@@ -1,4 +1,5 @@
 import unittest
+import math
 
 import torch
 
@@ -7,37 +8,26 @@ from mlx.od.fcos.encoder import encode_box, encode_targets
 class TestEncodeBox(unittest.TestCase):
     def test_encode_too_small(self):
         num_labels = 3
-        label_arr = torch.zeros((num_labels, 3, 3))
-        label = 1
         reg_arr = torch.zeros((4, 3, 3))
+        label_arr = torch.zeros((num_labels, 3, 3))
+        center_arr = torch.zeros((1, 3, 3))
+        label = 1
         stride = 4
         box = torch.Tensor([0, 0, 2, 2])
-        encode_box(reg_arr, label_arr, stride, box, label)
+        encode_box(reg_arr, label_arr, center_arr, stride, box, label)
 
         exp_reg_arr = torch.zeros((4, 3, 3))
         self.assertTrue(reg_arr.equal(exp_reg_arr))
 
     def test_encode1(self):
         num_labels = 3
-        label_arr = torch.zeros((num_labels, 3, 3))
-        label = 1
         reg_arr = torch.zeros((4, 3, 3))
-        stride = 4
-        box = torch.Tensor([3, 3, 9, 9])
-        encode_box(reg_arr, label_arr, stride, box, label)
-
-        exp_reg_arr = torch.zeros((4, 3, 3))
-        exp_reg_arr[:, 1, 1] = torch.Tensor([3, 3, 3, 3])
-        self.assertTrue(reg_arr.equal(exp_reg_arr))
-
-    def test_encode2(self):
-        num_labels = 3
         label_arr = torch.zeros((num_labels, 3, 3))
+        center_arr = torch.zeros((1, 3, 3))
         label = 1
-        reg_arr = torch.zeros((4, 3, 3))
         stride = 4
         box = torch.Tensor([0, 0, 4, 12])
-        encode_box(reg_arr, label_arr, stride, box, label)
+        encode_box(reg_arr, label_arr, center_arr, stride, box, label)
 
         exp_reg_arr = torch.zeros((4, 3, 3))
         exp_reg_arr[:, 0, 0] = torch.Tensor([2, 2, 2, 10])
@@ -49,14 +39,21 @@ class TestEncodeBox(unittest.TestCase):
         exp_label_arr[label, 0, :] = 1
         self.assertTrue(label_arr.equal(exp_label_arr))
 
-    def test_encode3(self):
+        exp_center_arr = torch.zeros((1, 3, 3))
+        exp_center_arr[0, 0, 0] = math.sqrt(1/5)
+        exp_center_arr[0, 0, 1] = math.sqrt(1)
+        exp_center_arr[0, 0, 2] = math.sqrt(1/5)
+        self.assertTrue(center_arr.equal(exp_center_arr))
+
+    def test_encode2(self):
         num_labels = 3
-        label_arr = torch.zeros((num_labels, 3, 3))
-        label = 1
         reg_arr = torch.zeros((4, 3, 3))
+        label_arr = torch.zeros((num_labels, 3, 3))
+        center_arr = torch.zeros((1, 3, 3))
+        label = 1
         stride = 4
         box = torch.Tensor([0, 8, 12, 12])
-        encode_box(reg_arr, label_arr, stride, box, label)
+        encode_box(reg_arr, label_arr, center_arr, stride, box, label)
 
         exp_reg_arr = torch.zeros((4, 3, 3))
         exp_reg_arr[:, 0, 2] = torch.Tensor([2, 2, 10, 2])

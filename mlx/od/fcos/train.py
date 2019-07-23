@@ -1,11 +1,9 @@
-from pathlib import Path
 import json
 import uuid
 from os.path import join, isdir, dirname
 import shutil
 import tempfile
 
-from PIL import Image
 import numpy as np
 import click
 import matplotlib
@@ -13,8 +11,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import fastai
 from fastai.vision import (
-    get_annotations, ObjectItemList, ObjectCategoryList, get_transforms,
-    bb_pad_collate, URLs, untar_data, ResizeMethod, ImageBBox)
+    get_annotations, ObjectItemList, get_transforms,
+    bb_pad_collate, URLs, untar_data)
 from fastai.basic_train import Learner
 from fastai.callbacks import CSVLogger
 import torch
@@ -25,9 +23,9 @@ from fastai.torch_core import OptLossFunc, OptOptimizer, Optional, Tuple, Union
 
 from mlx.od.fcos.model import FCOS
 from mlx.od.fcos.metrics import CocoMetric
+from mlx.od.fcos.plot import plot_preds
 from mlx.batch_utils import submit_job
 from mlx.filesystem.utils import make_dir, sync_to_dir, zipdir, unzip, download_if_needed
-
 
 def run_on_batch(dataset_name, test, debug):
     job_name = 'mlx_train_fcos-' + str(uuid.uuid4())
@@ -63,76 +61,10 @@ def plot_data(data, output_dir, max_per_split=50):
     _plot_data('train')
     _plot_data('val')
 
-def plot_preds(data, learn, classes, output_dir, max_plots=50):
-    preds_dir = join(output_dir, 'preds')
-    zip_path = join(output_dir, 'preds.zip')
-    make_dir(preds_dir, force_empty=True)
-    model = learn.model
-    device = list(model.parameters())[0].device
-    model.eval()
-    ds = data.valid_ds
-    for img_id, (x, y) in enumerate(ds):
-        if img_id == max_plots:
-            break
-        x_data = x.data.unsqueeze(0).to(device=device)
-        z, head_out = model(x_data, get_head_out=True)
-
-        # Plot predictions
-        h, w = x.shape[1:]
-        z = z[0]
-        boxes = z['boxes'].cpu()
-        labels = z['labels'].cpu()
-        if z['boxes'].shape[0] > 0:
-            z = ImageBBox.create(h, w, boxes, labels, classes=classes,
-                                 scale=True)
-            x.show(y=z)
-        else:
-            x.show()
-        plt.savefig(join(preds_dir, '{}.png'.format(img_id)), figsize=(3, 3))
-        plt.close()
-
-        # Plot original image
-        img = Image.fromarray(
-            (x.data.cpu().numpy() * 255).transpose(1, 2, 0).astype(np.uint8))
-        img.save(join(preds_dir, '{}-orig.png'.format(img_id)))
-
-        # Plot raw output of network
-        for s, out in head_out.items():
-            # Plot probs for each label
-            label_arr = out['label_arr'][0].detach().cpu()
-            label_probs = torch.sigmoid(label_arr).numpy()
-
-            plt.gca()
-            num_labels = len(classes)
-            for l in range(1, num_labels):
-                plt.subplot(5, 5, l)
-                plt.title(classes[l])
-                a = label_probs[l]
-                plt.imshow(a)
-
-            plt.suptitle('label probs for stride={}'.format(s))
-            plt.savefig(
-                join(preds_dir, '{}-{}-label-arr.png'.format(img_id, s)),
-                figsize=(3, 3))
-
-            # Plot top, left, bottom, right arrays.
-            reg_arr = out['reg_arr'][0].detach().cpu().numpy()
-            plt.gca()
-            directions = ['top', 'left', 'bottom', 'right']
-            for di, d in enumerate(directions):
-                plt.subplot(1, 4, di + 1)
-                plt.title(d)
-                a = reg_arr[di]
-                plt.imshow(a)
-
-            plt.suptitle('distance to box edge for stride={}'.format(s))
-            plt.savefig(
-                join(preds_dir, '{}-{}-reg-arr.png'.format(img_id, s)),
-                figsize=(10, 10))
-
-    zipdir(preds_dir, zip_path)
-    shutil.rmtree(preds_dir)
-
+# Modified from fastai to handle model which only computes loss when targets
+# are passed in, and only computes output otherwise. This should run faster
+# thanks to not having to run the decoder and NMS during training, and not
+# computing the loss for the validation which is not a great metric anyway.
 def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None,
                opt:OptOptimizer=None,
                cb_handler:Optional[CallbackHandler]=None)->Tuple[Union[Tensor,int,float,str]]:
@@ -273,8 +205,8 @@ def main(dataset_name, test, s3_data, batch, debug):
         CSVLogger(learn, filename='log')
     ]
     learn.fit_one_cycle(num_epochs, lr, callbacks=callbacks)
-
-    plot_preds(data, learn, classes, output_dir)
+    torch.save(learn.model.state_dict(), join(output_dir, 'model'))
+    plot_preds(data, learn.model, classes, output_dir)
 
     if s3_data:
         sync_to_dir(output_dir, output_uri)
