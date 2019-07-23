@@ -205,7 +205,7 @@ def main(dataset_name, test, s3_data, batch, debug):
         CSVLogger(learn, filename='log')
     ]
     learn.fit_one_cycle(num_epochs, lr, callbacks=callbacks)
-
+    torch.save(learn.model.state_dict(), join(output_dir, 'model'))
     plot_preds(data, learn.model, classes, output_dir)
 
     if s3_data:
