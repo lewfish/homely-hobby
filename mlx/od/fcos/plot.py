@@ -8,6 +8,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from fastai.vision import ImageBBox
 import torch
+import matplotlib.gridspec as gridspec
 
 from mlx.filesystem.utils import make_dir, zipdir
 
@@ -42,7 +43,7 @@ def plot_preds(data, model, classes, output_dir, max_plots=50, score_thresh=0.4)
             x.show(y=z)
         else:
             x.show()
-        plt.savefig(join(preds_dir, '{}.png'.format(img_id)), figsize=(3, 3))
+        plt.savefig(join(preds_dir, '{}.png'.format(img_id)), figsize=(4, 4))
         plt.close()
 
         # Plot original image
@@ -55,20 +56,22 @@ def plot_preds(data, model, classes, output_dir, max_plots=50, score_thresh=0.4)
             # Plot probs for each label
             label_arr = level_out['label_arr'][0].detach().cpu()
             label_probs = torch.sigmoid(label_arr).numpy()
-            plt.gca()
-            num_labels = len(classes)
-            for l in range(1, num_labels):
-                plt.subplot(5, 5, l)
-                plt.title(classes[l])
-                a = label_probs[l]
-                plt.imshow(a, vmin=0., vmax=1.)
-                plt.gca().axes.get_xaxis().set_visible(False)
-                plt.gca().axes.get_yaxis().set_visible(False)
 
-            plt.subplots_adjust(bottom=0.1, right=0.8, top=0.9)
-            plt.suptitle('label probs for stride={}'.format(stride))
+            plt.gca()
+            fig = plt.figure(constrained_layout=True, figsize=(12, 12))
+            grid = gridspec.GridSpec(ncols=5, nrows=5, figure=fig)
+            num_labels = len(classes)
+            for l in range(num_labels):
+                ax = fig.add_subplot(grid[l])
+                ax.set_title(classes[l])
+                ax.imshow(label_probs[l], vmin=0., vmax=1.)
+                ax.get_xaxis().set_visible(False)
+                ax.get_yaxis().set_visible(False)
+
+            plt.suptitle('label probs for stride={}'.format(stride), size=20)
             plt.savefig(
-                join(preds_dir, '{}-{}-label-arr.png'.format(img_id, stride)))
+                join(preds_dir, '{}-{}-label-arr.png'.format(img_id, stride)),
+                dpi=200, bbox_inches='tight')
 
             # Plot top, left, bottom, right from reg_arr and center_arr.
             reg_arr = level_out['reg_arr'][0].detach().cpu().numpy()
@@ -76,26 +79,28 @@ def plot_preds(data, model, classes, output_dir, max_plots=50, score_thresh=0.4)
             center_probs = torch.sigmoid(center_arr).numpy()
 
             plt.gca()
+            fig = plt.figure(constrained_layout=True, figsize=(12, 3.5))
+            grid = gridspec.GridSpec(ncols=5, nrows=1, figure=fig)
             directions = ['top', 'left', 'bottom', 'right']
             max_reg_val = np.amax(reg_arr)
             for di, d in enumerate(directions):
-                plt.subplot(1, 5, di + 1)
-                plt.title(d)
-                a = reg_arr[di]
-                plt.imshow(a, vmin=0, vmax=max_reg_val)
-                plt.gca().axes.get_xaxis().set_visible(False)
-                plt.gca().axes.get_yaxis().set_visible(False)
+                ax = fig.add_subplot(grid[di])
+                ax.imshow(reg_arr[di], vmin=0, vmax=max_reg_val)
+                ax.set_title(d)
+                ax.get_xaxis().set_visible(False)
+                ax.get_yaxis().set_visible(False)
 
-            plt.subplot(1, 5, 5)
-            plt.title('centerness')
-            plt.imshow(center_probs, vmin=0, vmax=1)
-            plt.gca().axes.get_xaxis().set_visible(False)
-            plt.gca().axes.get_yaxis().set_visible(False)
+            ax = fig.add_subplot(grid[4])
+            ax.set_title('centerness')
+            ax.imshow(center_probs, vmin=0, vmax=1)
+            ax.get_xaxis().set_visible(False)
+            ax.get_yaxis().set_visible(False)
 
-            plt.suptitle('reg_arr and center_arr for stride={}'.format(stride))
+            plt.suptitle(
+                'reg_arr and center_arr for stride={}'.format(stride), size=20)
             plt.savefig(
                 join(preds_dir, '{}-{}-reg-center-arr.png'.format(img_id, stride)),
-                figsize=(10, 10))
+                dpi=200, bbox_inches='tight')
 
     zipdir(preds_dir, zip_path)
     shutil.rmtree(preds_dir)
