@@ -4,7 +4,7 @@ def encode_box(reg_arr, label_arr, stride, box, label):
     """Encode single box/label into array format for single level of pyramid.
 
     The array format is fed into the loss function and is in the same format
-    as the output as the head of the FCOS model.This writes values to reg_arr
+    as the output as the head of the FCOS model. This writes values to reg_arr
     and label_arr and does not return anything.
 
     Note that the height and width of the box has to be at least stride,
@@ -14,7 +14,8 @@ def encode_box(reg_arr, label_arr, stride, box, label):
     Args:
         reg_arr: (tensor) with shape (4, h, w) the first dimension ranges over
             t, l, b, r (ie. top, left, bottom, right)
-        label_arr: (tensor) with shape (num_labels, h, w)
+        label_arr: (tensor) with shape (num_labels, h, w) containing
+            probabilities
         stride: (int) the stride of the level of the pyramid these arrays
             are responsible for encoding
         box: (tensor) with shape (4,) with format (ymin, xmin, ymax, xmax)
@@ -116,7 +117,8 @@ def encode_targets(boxes, labels, pyramid_shape, num_labels):
     Returns:
         (dict) where keys are strides, values are dicts of form
         {'reg_arr': <tensor>, 'label_arr': <tensor>} where reg_arr.shape is
-        (4, h, w) and label_arr.shape is (num_labels, h, w)
+        (4, h, w) and label_arr.shape is (num_labels, h, w) the values in
+        label_arr are probabilities
     """
     # sort boxes and labels by box area in descending order
     # this is so that we encode smaller boxes later, to give them precedence

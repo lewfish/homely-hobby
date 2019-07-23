@@ -137,6 +137,7 @@ class FCOSHead(nn.Module):
                 'reg_arr': <tensor with shape (batch_sz, 4, h*, w*)>,
                 'label_arr': <tensor with shape (batch_sz, num_labels, h*, w*>
             }
+            label_arr contains logits
         """
         reg_arr = torch.exp(scale_param * self.reg_conv(self.reg_branch(x)))
         label_arr = self.label_conv(self.label_branch(x))
@@ -162,6 +163,9 @@ class FCOS(nn.Module):
 
     def loss(self, out, targets):
         """Compute loss for a single image.
+
+        Note: the label_arr for output is assumed to contain logits,
+            and for targets probabilities.
 
         Args:
             out: (dict) the output of the heads for the whole pyramid
@@ -212,6 +216,8 @@ class FCOS(nn.Module):
             form {'boxes': <tensor with shape (n, 4)>,
                   'labels': <tensor with shape (n,)>,
                   'scores': <tensor with shape (n,)>}
+            this returns boxes with score > 0.05. Further filtering based on
+            score should be done before considering the prediction "final".
 
             if target is a list, returns the loss as a single element tensor
         """
@@ -237,9 +243,11 @@ class FCOS(nn.Module):
             for i in range(batch_sz):
                 single_head_out = {}
                 for k, v in head_out.items():
+                    # Convert logits to probabilities since decode expects
+                    # probabilities.
                     single_head_out[k] = {
                         'reg_arr': v['reg_arr'][i],
-                        'label_arr': v['label_arr'][i]
+                        'label_arr': torch.sigmoid(v['label_arr'][i])
                     }
                 boxes, labels, scores = decode_output(single_head_out)
                 good_inds = compute_nms(
