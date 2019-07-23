@@ -16,6 +16,8 @@ def encode_box(reg_arr, label_arr, center_arr, stride, box, label):
             t, l, b, r (ie. top, left, bottom, right)
         label_arr: (tensor) with shape (num_labels, h, w) containing
             probabilities
+        center_arr: (tensor) with shape (1, h, w) containing values between
+            0 and 1
         stride: (int) the stride of the level of the pyramid these arrays
             are responsible for encoding
         box: (tensor) with shape (4,) with format (ymin, xmin, ymax, xmax)
@@ -91,9 +93,10 @@ def init_targets(pyramid_shape, num_labels, device='cpu'):
 
     Returns:
         (dict) where keys are strides, values are dicts of form
-        {'reg_arr': <tensor>, 'label_arr': <tensor>} where reg_arr.shape is
-        (4, h, w) and label_arr.shape is (num_labels, h, w), with values
-        set to zero.
+        {'reg_arr': <tensor with shape (4, h, w)>,
+         'label_arr': <tensor with shape (num_labels, h, w)>,
+         'center_arr': <tensor with shape (1, h, w)>}}
+        with all values set to 0
     """
     targets = {}
     for stride, _, h, w in pyramid_shape:
@@ -127,9 +130,10 @@ def encode_targets(boxes, labels, pyramid_shape, num_labels):
 
     Returns:
         (dict) where keys are strides, values are dicts of form
-        {'reg_arr': <tensor>, 'label_arr': <tensor>} where reg_arr.shape is
-        (4, h, w) and label_arr.shape is (num_labels, h, w) the values in
-        label_arr are probabilities
+        {'reg_arr': <tensor with shape (4, h, w)>,
+         'label_arr': <tensor with shape (num_labels, h, w)>,
+         'center_arr': <tensor with shape (1, h, w)>}}
+        with label and center values between 0 and 1
     """
     # sort boxes and labels by box area in descending order
     # this is so that we encode smaller boxes later, to give them precedence

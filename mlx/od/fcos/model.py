@@ -173,8 +173,8 @@ class FCOS(nn.Module):
     def loss(self, out, targets):
         """Compute loss for a single image.
 
-        Note: the label_arr for output is assumed to contain logits,
-            and for targets probabilities.
+        Note: the label_arr and center_arr for output is assumed to contain
+        logits, and is assumed to contain probabilities for targets.
 
         Args:
             out: (dict) the output of the heads for the whole pyramid
@@ -183,7 +183,8 @@ class FCOS(nn.Module):
             the format for both is:
             (dict) of form {
                 'reg_arr': <tensor with shape (4, h*, w*)>,
-                'label_arr': <tensor with shape (num_labels, h*, w*>
+                'label_arr': <tensor with shape (num_labels, h*, w*)>,
+                'center_arr': <tensor with shape (1, h*, w*)>
             }
 
         Returns:
@@ -257,8 +258,8 @@ class FCOS(nn.Module):
             for i in range(batch_sz):
                 single_head_out = {}
                 for k, v in head_out.items():
-                    # Convert logits to probabilities since decode expects
-                    # probabilities.
+                    # Convert logits in label_arr and center_arr
+                    # to probabilities since decode expects probabilities.
                     single_head_out[k] = {
                         'reg_arr': v['reg_arr'][i],
                         'label_arr': torch.sigmoid(v['label_arr'][i]),
@@ -285,6 +286,9 @@ class FCOS(nn.Module):
 
             single_head_out = {}
             for s in strides:
+                # Don't convert logits to probabilities for output since
+                # loss function expects logits for output
+                # (and probabilities for targets)
                 single_head_out[s] = {
                     'reg_arr': head_out[s]['reg_arr'][i],
                     'label_arr': head_out[s]['label_arr'][i],

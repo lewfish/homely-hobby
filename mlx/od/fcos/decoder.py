@@ -9,6 +9,8 @@ def decode_level_output(reg_arr, label_arr, center_arr, stride, score_thresh=0.0
             t, l, b, r (ie. top, left, bottom, right).
         label_arr: (tensor) with shape (num_labels, h, w) containing
             probabilities
+        center_arr: (tensor) with shape (1, h, w) containing values between
+            0 and 1
         stride: (int) the stride of the level of the pyramid
         score_thresh: (float) probability score threshold used to determine
             if a box is present at a cell
@@ -42,10 +44,11 @@ def decode_output(output, score_thresh=0.05):
     """Decode output of heads for all levels of pyramid for one image.
 
     Args:
-        output: (dict) where keys are strides, values are dicts of form
-            {'reg_arr': <tensor>, 'label_arr': <tensor>} where reg_arr.shape is
-            (4, h, w) and label_arr.shape is (num_labels, h, w). label_arr
-            contains probabilities
+        output: (dict) where keys are strides and values are dicts of form
+            {'reg_arr': <tensor of shape (4, h, w)>,
+             'label_arr': <tensor of shape (num_labels, h, w)>,
+             'center_arr': <tensor of shape (1, h, w)>}
+            and label and center values are between 0 and 1
         score_thresh: (float) probability score threshold used to determine
             if a box is present at a cell
 
