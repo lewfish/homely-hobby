@@ -37,7 +37,7 @@ def plot_preds(data, model, classes, output_dir, max_plots=50, score_thresh=0.4)
         keep_inds = scores > score_thresh
         boxes, labels, scores = boxes[keep_inds, :], labels[keep_inds], scores[keep_inds]
 
-        if z['boxes'].shape[0] > 0:
+        if boxes.shape[0] > 0:
             z = ImageBBox.create(h, w, boxes, labels, classes=classes,
                                  scale=True)
             x.show(y=z)
@@ -71,14 +71,14 @@ def plot_preds(data, model, classes, output_dir, max_plots=50, score_thresh=0.4)
             plt.suptitle('label probs for stride={}'.format(stride), size=20)
             plt.savefig(
                 join(preds_dir, '{}-{}-label-arr.png'.format(img_id, stride)),
-                dpi=200, bbox_inches='tight')
+                dpi=100, bbox_inches='tight')
+            plt.close(fig)
 
             # Plot top, left, bottom, right from reg_arr and center_arr.
             reg_arr = level_out['reg_arr'][0].detach().cpu().numpy()
             center_arr = level_out['center_arr'][0][0].detach().cpu()
             center_probs = torch.sigmoid(center_arr).numpy()
 
-            plt.gca()
             fig = plt.figure(constrained_layout=True, figsize=(12, 3.5))
             grid = gridspec.GridSpec(ncols=5, nrows=1, figure=fig)
             directions = ['top', 'left', 'bottom', 'right']
@@ -100,7 +100,8 @@ def plot_preds(data, model, classes, output_dir, max_plots=50, score_thresh=0.4)
                 'reg_arr and center_arr for stride={}'.format(stride), size=20)
             plt.savefig(
                 join(preds_dir, '{}-{}-reg-center-arr.png'.format(img_id, stride)),
-                dpi=200, bbox_inches='tight')
+                dpi=100, bbox_inches='tight')
+            plt.close(fig)
 
     zipdir(preds_dir, zip_path)
     shutil.rmtree(preds_dir)
