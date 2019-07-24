@@ -35,6 +35,7 @@ RUN pip install shapely==1.6.4
 RUN pip install cython==0.29.*
 RUN pip install pycocotools==2.0.*
 RUN pip install line_profiler==2.1.*
+RUN conda install -y -c pytorch torchvision=0.3
 
 ENV LANG C.UTF-8
 ENV LC_ALL C.UTF-8

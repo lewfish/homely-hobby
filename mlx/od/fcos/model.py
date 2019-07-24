@@ -3,6 +3,7 @@ from collections import defaultdict
 import torch
 import torch.nn as nn
 from torchvision import models
+from torchvision.ops.boxes import batched_nms
 
 from mlx.od.fcos.decoder import decode_output
 from mlx.od.fcos.encoder import encode_targets
@@ -268,10 +269,13 @@ class FCOS(nn.Module):
                 boxes, labels, scores, centerness = decode_output(single_head_out)
                 nms_scores = scores * centerness
 
-                np_boxes = boxes.detach().cpu().numpy()
-                np_labels = labels.detach().cpu().numpy()
-                np_nms_scores = nms_scores.detach().cpu().numpy()
-                good_inds = compute_nms(np_boxes, np_labels, np_nms_scores, iou_thresh=iou_thresh)
+                boxes = torch.stack([
+                    torch.clamp(boxes[:, 0], 0, h),
+                    torch.clamp(boxes[:, 1], 0, w),
+                    torch.clamp(boxes[:, 2], 0, h),
+                    torch.clamp(boxes[:, 3], 0, w)
+                ], dim=1)
+                good_inds = batched_nms(boxes, nms_scores, labels, iou_thresh)
                 boxes, labels, scores = \
                     boxes[good_inds, :], labels[good_inds], scores[good_inds]
                 out.append({'boxes': boxes, 'labels': labels, 'scores': scores})
