@@ -118,7 +118,7 @@ def setup_data(dataset_name):
     if dataset_name == 'pascal2007':
         output_uri = 's3://raster-vision-lf-dev/pascal2007/output/'
         output_dir = '/opt/data/pascal2007/output/'
-        make_dir(output_dir)
+        make_dir(output_dir, force_empty=True)
         data_dir = '/opt/data/pascal2007/data'
         untar_data(URLs.PASCAL_2007, dest=data_dir)
         data_dir = join(data_dir, 'pascal_2007')
@@ -126,7 +126,7 @@ def setup_data(dataset_name):
     elif dataset_name == 'boxes':
         output_uri = 's3://raster-vision-lf-dev/boxes/output'
         output_dir = '/opt/data/boxes/output/'
-        make_dir(output_dir)
+        make_dir(output_dir, force_empty=True)
         data_uri = 's3://raster-vision-lf-dev/boxes/boxes.zip'
         data_dir = '/opt/data/boxes/data'
         with tempfile.TemporaryDirectory() as tmp_dir:
