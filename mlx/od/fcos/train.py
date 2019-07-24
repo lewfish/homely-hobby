@@ -14,7 +14,6 @@ from fastai.vision import (
     get_annotations, ObjectItemList, get_transforms,
     bb_pad_collate, URLs, untar_data)
 from fastai.basic_train import Learner
-from fastai.callbacks import CSVLogger
 import torch
 from torch import nn, Tensor
 from fastai.callback import CallbackHandler
@@ -24,18 +23,27 @@ from fastai.torch_core import OptLossFunc, OptOptimizer, Optional, Tuple, Union
 from mlx.od.fcos.model import FCOS
 from mlx.od.fcos.metrics import CocoMetric
 from mlx.od.fcos.plot import plot_preds
+from mlx.od.fcos.callbacks import (
+    MyCSVLogger, ExportModelCallback, SyncCallback)
 from mlx.batch_utils import submit_job
-from mlx.filesystem.utils import make_dir, sync_to_dir, zipdir, unzip, download_if_needed
+from mlx.filesystem.utils import (
+    make_dir, sync_to_dir, zipdir, unzip, download_if_needed)
 
-def run_on_batch(dataset_name, test, debug):
+def run_on_batch(dataset_name, test, debug, profile):
     job_name = 'mlx_train_fcos-' + str(uuid.uuid4())
     job_def = 'lewfishPyTorchCustomGpuJobDefinition'
     job_queue = 'lewfishRasterVisionGpuJobQueue'
     cmd_list = ['python', '-m', 'mlx.od.fcos.train', dataset_name, '--s3-data']
+
     if debug:
         cmd_list = [
             'python', '-m', 'ptvsd', '--host', '0.0.0.0', '--port', '6006',
             '--wait', '-m', 'mlx.od.fcos.train', dataset_name, '--s3-data']
+
+    if profile:
+        cmd_list = ['kernprof', '-v', '-l', '/opt/src/mlx/od/fcos/train.py',
+                    dataset_name, '--s3-data']
+
     if test:
         cmd_list.append('--test')
     submit_job(job_name, job_def, job_queue, cmd_list)
@@ -110,7 +118,7 @@ def setup_data(dataset_name):
     if dataset_name == 'pascal2007':
         output_uri = 's3://raster-vision-lf-dev/pascal2007/output/'
         output_dir = '/opt/data/pascal2007/output/'
-        make_dir(output_dir)
+        make_dir(output_dir, force_empty=True)
         data_dir = '/opt/data/pascal2007/data'
         untar_data(URLs.PASCAL_2007, dest=data_dir)
         data_dir = join(data_dir, 'pascal_2007')
@@ -118,7 +126,7 @@ def setup_data(dataset_name):
     elif dataset_name == 'boxes':
         output_uri = 's3://raster-vision-lf-dev/boxes/output'
         output_dir = '/opt/data/boxes/output/'
-        make_dir(output_dir)
+        make_dir(output_dir, force_empty=True)
         data_uri = 's3://raster-vision-lf-dev/boxes/boxes.zip'
         data_dir = '/opt/data/boxes/data'
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -135,9 +143,10 @@ def setup_data(dataset_name):
 @click.option('--s3-data', is_flag=True, help='Use data and store results on S3')
 @click.option('--batch', is_flag=True, help='Submit Batch job for full experiment')
 @click.option('--debug', is_flag=True, help='Run via debugger')
-def main(dataset_name, test, s3_data, batch, debug):
+@click.option('--profile', is_flag=True, help='Run via profiler')
+def main(dataset_name, test, s3_data, batch, debug, profile):
     if batch:
-        run_on_batch(dataset_name, test, debug)
+        run_on_batch(dataset_name, test, debug, profile)
 
     # Setup options
     backbone_arch = 'resnet18'
@@ -145,7 +154,7 @@ def main(dataset_name, test, s3_data, batch, debug):
     bs = 8
     size = 300
     num_workers = 4
-    num_epochs = 100
+    num_epochs = 30
     lr = 1e-4
     if test:
         bs = 1
@@ -182,7 +191,7 @@ def main(dataset_name, test, s3_data, batch, debug):
             src = src[rand_inds]
 
         if dataset_name == 'pascal2007':
-            src = src.split_by_files(val_images[0:int(len(trn_images) * 0.2)])
+            src = src.split_by_files(val_images[0:int(len(trn_images) * 0.1)])
         else:
             src = src.split_by_files(val_images)
 
@@ -201,11 +210,14 @@ def main(dataset_name, test, s3_data, batch, debug):
     metrics = [CocoMetric(num_labels)]
     learn = Learner(data, model, path=output_dir, metrics=metrics)
     fastai.basic_train.loss_batch = loss_batch
+    model_path = join(output_dir, 'model.pth')
     callbacks = [
-        CSVLogger(learn, filename='log')
+        MyCSVLogger(learn, filename='log'),
+        ExportModelCallback(learn, model_path, monitor='coco_metric')
     ]
+    if s3_data:
+        callbacks.append(SyncCallback(output_dir, output_uri, 1))
     learn.fit_one_cycle(num_epochs, lr, callbacks=callbacks)
-    torch.save(learn.model.state_dict(), join(output_dir, 'model'))
     plot_preds(data, learn.model, classes, output_dir)
 
     if s3_data:
