@@ -14,7 +14,6 @@ from fastai.vision import (
     get_annotations, ObjectItemList, get_transforms,
     bb_pad_collate, URLs, untar_data)
 from fastai.basic_train import Learner
-from fastai.callbacks import CSVLogger
 import torch
 from torch import nn, Tensor
 from fastai.callback import CallbackHandler
@@ -24,8 +23,11 @@ from fastai.torch_core import OptLossFunc, OptOptimizer, Optional, Tuple, Union
 from mlx.od.fcos.model import FCOS
 from mlx.od.fcos.metrics import CocoMetric
 from mlx.od.fcos.plot import plot_preds
+from mlx.od.fcos.callbacks import (
+    MyCSVLogger, ExportModelCallback, SyncCallback)
 from mlx.batch_utils import submit_job
-from mlx.filesystem.utils import make_dir, sync_to_dir, zipdir, unzip, download_if_needed
+from mlx.filesystem.utils import (
+    make_dir, sync_to_dir, zipdir, unzip, download_if_needed)
 
 def run_on_batch(dataset_name, test, debug, profile):
     job_name = 'mlx_train_fcos-' + str(uuid.uuid4())
@@ -208,11 +210,14 @@ def main(dataset_name, test, s3_data, batch, debug, profile):
     metrics = [CocoMetric(num_labels)]
     learn = Learner(data, model, path=output_dir, metrics=metrics)
     fastai.basic_train.loss_batch = loss_batch
+    model_path = join(output_dir, 'model.pth')
     callbacks = [
-        CSVLogger(learn, filename='log')
+        MyCSVLogger(learn, filename='log'),
+        ExportModelCallback(learn, model_path, monitor='coco_metric')
     ]
+    if s3_data:
+        callbacks.append(SyncCallback(output_dir, output_uri, 1))
     learn.fit_one_cycle(num_epochs, lr, callbacks=callbacks)
-    torch.save(learn.model.state_dict(), join(output_dir, 'model'))
     plot_preds(data, learn.model, classes, output_dir)
 
     if s3_data:
