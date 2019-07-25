@@ -111,6 +111,7 @@ def main(dataset_name, test, s3_data, batch, debug, profile):
     levels = [0]
     lr = 1e-4
     num_epochs = 25
+    sync_interval = 2
     if test:
         num_epochs = 1
 
@@ -133,7 +134,7 @@ def main(dataset_name, test, s3_data, batch, debug, profile):
         ExportModelCallback(learn, model_path, monitor='coco_metric')
     ]
     if s3_data:
-        callbacks.append(SyncCallback(output_dir, output_uri, 1))
+        callbacks.append(SyncCallback(output_dir, output_uri, sync_interval))
     learn.fit_one_cycle(num_epochs, lr, callbacks=callbacks)
 
     plot_preds(databunch, learn.model, databunch.classes, output_dir)
