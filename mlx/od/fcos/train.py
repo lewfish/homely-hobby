@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import fastai
 from fastai.vision import (
     get_annotations, ObjectItemList, get_transforms,
-    bb_pad_collate, URLs, untar_data)
+    bb_pad_collate, URLs, untar_data, imagenet_stats, flip_affine)
 from fastai.basic_train import Learner
 import torch
 from torch import nn, Tensor
@@ -197,9 +197,17 @@ def main(dataset_name, test, s3_data, batch, debug, profile):
 
         src = src.label_from_func(get_y_func, classes=classes)
         if dataset_name != 'boxes':
-            src = src.transform(get_transforms(), size=size, tfm_y=True)
-        return src.databunch(path=data_dir, bs=bs, collate_fn=bb_pad_collate,
+            train_transforms = [flip_affine(p=0.5)]
+            val_transforms = []
+            tfms = get_transforms()
+            src = src.transform(
+                tfms=[train_transforms, val_transforms], size=size, tfm_y=True)
+
+        data = src.databunch(path=data_dir, bs=bs, collate_fn=bb_pad_collate,
                              num_workers=num_workers)
+        if dataset_name == 'pascal2007':
+            data = data.normalize(imagenet_stats)
+        return data
 
     data = get_data(bs, size)
     print(data)
