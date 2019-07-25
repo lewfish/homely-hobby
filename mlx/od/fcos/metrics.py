@@ -116,9 +116,12 @@ class CocoMetric(Callback):
         my_targets = []
         for batch_boxes, batch_labels in self.targets:
             for boxes, labels in zip(batch_boxes, batch_labels):
+                non_pad_inds = labels != 0
                 boxes = ((boxes + 1.0) / 2.0)
                 boxes = boxes * torch.tensor([[self.h, self.w, self.h, self.w]]).to(
                     device=boxes.device, dtype=torch.float)
-                my_targets.append({'boxes': boxes, 'labels': labels})
+                my_targets.append({
+                    'boxes': boxes[non_pad_inds, :],
+                    'labels': labels[non_pad_inds]})
         metric = compute_coco_eval(self.outputs, my_targets, self.num_labels)
         return add_metrics(last_metrics, metric)
