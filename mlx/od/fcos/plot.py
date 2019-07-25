@@ -1,5 +1,6 @@
 from os.path import join
 import shutil
+import math
 
 from PIL import Image
 import numpy as np
@@ -11,6 +12,27 @@ import torch
 import matplotlib.gridspec as gridspec
 
 from mlx.filesystem.utils import make_dir, zipdir
+
+
+def plot_data(data, output_dir, max_per_split=25):
+    def _plot_data(split):
+        debug_chips_dir = join(output_dir, '{}-debug-chips'.format(split))
+        zip_path = join(output_dir, '{}-debug-chips.zip'.format(split))
+        make_dir(debug_chips_dir, force_empty=True)
+
+        ds = data.train_ds if split == 'train' else data.valid_ds
+        for i, (x, y) in enumerate(ds):
+            if i == max_per_split:
+                break
+            x.show(y=y)
+            plt.savefig(join(debug_chips_dir, '{}.png'.format(i)),
+                        figsize=(6, 6))
+            plt.close()
+        zipdir(debug_chips_dir, zip_path)
+        shutil.rmtree(debug_chips_dir)
+
+    _plot_data('train')
+    _plot_data('val')
 
 
 def plot_preds(data, model, classes, output_dir, max_plots=50, score_thresh=0.4):
@@ -59,8 +81,10 @@ def plot_preds(data, model, classes, output_dir, max_plots=50, score_thresh=0.4)
 
             plt.gca()
             fig = plt.figure(constrained_layout=True, figsize=(12, 12))
-            grid = gridspec.GridSpec(ncols=5, nrows=5, figure=fig)
             num_labels = len(classes)
+            ncols = nrows = math.ceil(math.sqrt(num_labels))
+            grid = gridspec.GridSpec(ncols=ncols, nrows=nrows, figure=fig)
+
             for l in range(num_labels):
                 ax = fig.add_subplot(grid[l])
                 ax.set_title(classes[l])
