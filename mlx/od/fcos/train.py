@@ -130,6 +130,10 @@ def main(dataset, test, s3_data, batch, debug, profile):
     fastai.basic_train.loss_batch = loss_batch
     model_path = join(output_dir, 'model.pth')
 
+    if os.path.isfile(model_path):
+        print('Loading saved model...')
+        learn.model.load_state_dict(torch.load(model_path))
+
     # Train model
     callbacks = [
         MyCSVLogger(learn, filename='log'),
@@ -139,6 +143,8 @@ def main(dataset, test, s3_data, batch, debug, profile):
         callbacks.append(SyncCallback(output_dir, output_uri, sync_interval))
     learn.fit_one_cycle(num_epochs, lr, callbacks=callbacks)
 
+    print('Loading saved model...')
+    learn.model.load_state_dict(torch.load(model_path))
     plot_preds(databunch, learn.model, databunch.classes, output_dir)
     if s3_data:
         sync_to_dir(output_dir, output_uri)
