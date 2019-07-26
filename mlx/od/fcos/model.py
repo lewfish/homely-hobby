@@ -1,4 +1,5 @@
 from collections import defaultdict
+import math
 
 import torch
 import torch.nn as nn
@@ -122,20 +123,17 @@ class FCOSHead(nn.Module):
 
         self.center_conv = nn.Conv2d(c, 1, 1)
 
-        # Initialize weights so outputs have more reasonable values, following
-        # Retinanet paper.
-        self.reg_conv.weight.data.fill_(0.0)
-        self.reg_conv.bias.data.fill_(1.0)
+        # initialization adapted from retinanet
+        # https://github.com/facebookresearch/maskrcnn-benchmark/blob/master/maskrcnn_benchmark/modeling/rpn/retinanet/retinanet.py
+        for modules in [self.reg_branch, self.reg_conv, self.label_branch, self.label_conv, self.center_conv]:
+            for l in modules.modules():
+                if isinstance(l, nn.Conv2d):
+                    torch.nn.init.normal_(l.weight, std=0.01)
+                    torch.nn.init.constant_(l.bias, 0)
 
-        self.label_conv.weight.data.fill_(0.0)
-        prior = torch.tensor(0.01)
-        logit = torch.log(prior / (1 - prior))
-        self.label_conv.bias.data.fill_(logit.item())
-
-        self.center_conv.weight.data.fill_(0.0)
-        prior = torch.tensor(0.5)
-        logit = torch.log(prior / (1 - prior))
-        self.center_conv.bias.data.fill_(logit)
+        prob = 0.01
+        logit = math.log(prob / (1 - prob))
+        torch.nn.init.constant_(self.label_conv.bias, logit)
 
     def forward(self, x, scale_param):
         """Computes output of head.
