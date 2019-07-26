@@ -8,23 +8,43 @@ from fastai.vision import (
    flip_affine, bb_pad_collate, ResizeMethod)
 
 from mlx.filesystem.utils import (
-    make_dir, sync_to_dir, zipdir, unzip, download_if_needed)
+    make_dir, sync_to_dir, sync_from_dir, zipdir, unzip, download_if_needed)
 
-def setup_data(dataset_name, test):
-    if dataset_name == 'pascal2007':
-        output_uri = 's3://raster-vision-lf-dev/pascal2007/output-better-init'
-        output_dir = '/opt/data/pascal2007/output/'
+pascal2007 = 'pascal2007'
+penn_fudan = 'penn-fudan'
+datasets = [pascal2007, penn_fudan]
+
+output_config = {
+    pascal2007: {
+        'output_uri': 's3://raster-vision-lf-dev/pascal2007/output-test',
+        'output_dir': '/opt/data/pascal2007/output/'
+    },
+    penn_fudan: {
+        'output_uri': 's3://raster-vision-lf-dev/penn-fudan/output-test',
+        'output_dir': '/opt/data/penn-fudan/output/'
+    }
+}
+
+def validate_dataset(dataset):
+    if dataset not in datasets:
+        raise ValueError('dataset {} is invalid'.format(dataset))
+
+def setup_output(dataset, s3_data=False):
+    validate_dataset(dataset)
+    output_uri = output_config[dataset]['output_uri']
+    output_dir = output_config[dataset]['output_dir']
+    make_dir(output_dir)
+    if s3_data:
         make_dir(output_dir, force_empty=True)
-        databunch = get_pascal_databunch(test)
-        return output_dir, output_uri, databunch
-    elif dataset_name == 'penn-fudan':
-        output_uri = 's3://raster-vision-lf-dev/penn-fudan/output-better-init'
-        output_dir = '/opt/data/penn-fudan/output/'
-        make_dir(output_dir, force_empty=True)
-        databunch = get_penn_fudan_databunch(test)
-        return output_dir, output_uri, databunch
-    else:
-        raise ValueError('dataset_name {} is invalid'.format(dataset_name))
+        sync_from_dir(output_uri, output_dir)
+    return output_dir, output_uri
+
+def get_databunch(dataset, test):
+    validate_dataset(dataset)
+    if dataset == pascal2007:
+        return get_pascal_databunch(test)
+    elif dataset == penn_fudan:
+        return get_penn_fudan_databunch(test)
 
 def get_pascal_databunch(test):
     img_sz = 320

@@ -3,6 +3,7 @@ import uuid
 from os.path import join, isdir, dirname
 import shutil
 import tempfile
+import os
 
 import numpy as np
 import click
@@ -25,7 +26,7 @@ from mlx.od.fcos.metrics import CocoMetric
 from mlx.od.fcos.plot import plot_preds, plot_data
 from mlx.od.fcos.callbacks import (
     MyCSVLogger, ExportModelCallback, SyncCallback)
-from mlx.od.fcos.data import setup_data
+from mlx.od.fcos.data import get_databunch, setup_output
 from mlx.batch_utils import submit_job
 from mlx.filesystem.utils import (
     make_dir, sync_to_dir, zipdir, unzip, download_if_needed)
@@ -96,15 +97,15 @@ def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None
     return loss.detach().cpu()
 
 @click.command()
-@click.argument('dataset_name')
+@click.argument('dataset')
 @click.option('--test', is_flag=True, help='Run small test experiment')
 @click.option('--s3-data', is_flag=True, help='Use data and store results on S3')
 @click.option('--batch', is_flag=True, help='Submit Batch job for full experiment')
 @click.option('--debug', is_flag=True, help='Run via debugger')
 @click.option('--profile', is_flag=True, help='Run via profiler')
-def main(dataset_name, test, s3_data, batch, debug, profile):
+def main(dataset, test, s3_data, batch, debug, profile):
     if batch:
-        run_on_batch(dataset_name, test, debug, profile)
+        run_on_batch(dataset, test, debug, profile)
 
     # Setup options
     backbone_arch = 'resnet18'
@@ -116,7 +117,8 @@ def main(dataset_name, test, s3_data, batch, debug, profile):
         num_epochs = 1
 
     # Setup data
-    output_dir, output_uri, databunch = setup_data(dataset_name, test)
+    databunch = get_databunch(dataset, test)
+    output_dir, output_uri = setup_output(dataset, s3_data)
     print(databunch)
     plot_data(databunch, output_dir)
 
