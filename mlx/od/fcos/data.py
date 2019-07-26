@@ -5,20 +5,20 @@ import tempfile
 import numpy as np
 from fastai.vision import (
    URLs, get_annotations, ObjectItemList, untar_data, imagenet_stats,
-   flip_affine, bb_pad_collate)
+   flip_affine, bb_pad_collate, ResizeMethod)
 
 from mlx.filesystem.utils import (
     make_dir, sync_to_dir, zipdir, unzip, download_if_needed)
 
 def setup_data(dataset_name, test):
     if dataset_name == 'pascal2007':
-        output_uri = 's3://raster-vision-lf-dev/pascal2007/output-norm-fliplr/'
+        output_uri = 's3://raster-vision-lf-dev/pascal2007/output-better-init'
         output_dir = '/opt/data/pascal2007/output/'
         make_dir(output_dir, force_empty=True)
         databunch = get_pascal_databunch(test)
         return output_dir, output_uri, databunch
     elif dataset_name == 'penn-fudan':
-        output_uri = 's3://raster-vision-lf-dev/penn-fudan/output'
+        output_uri = 's3://raster-vision-lf-dev/penn-fudan/output-better-init'
         output_dir = '/opt/data/penn-fudan/output/'
         make_dir(output_dir, force_empty=True)
         databunch = get_penn_fudan_databunch(test)
@@ -27,12 +27,12 @@ def setup_data(dataset_name, test):
         raise ValueError('dataset_name {} is invalid'.format(dataset_name))
 
 def get_pascal_databunch(test):
-    img_sz = 416
-    batch_sz = 8
+    img_sz = 320
+    batch_sz = 16
     num_workers = 4
 
     if test:
-        img_sz = 200
+        img_sz = 256
         batch_sz = 1
         num_workers = 0
 
@@ -65,7 +65,8 @@ def get_pascal_databunch(test):
         train_transforms = [flip_affine(p=0.5)]
         val_transforms = []
         src = src.transform(
-            tfms=[train_transforms, val_transforms], size=img_sz, tfm_y=True)
+            tfms=[train_transforms, val_transforms], size=img_sz, tfm_y=True,
+            resize_method=ResizeMethod.SQUISH, padding_mode='zeros')
         data = src.databunch(path=data_dir, bs=batch_sz, collate_fn=bb_pad_collate,
                              num_workers=num_workers)
         data = data.normalize(imagenet_stats)
@@ -73,7 +74,7 @@ def get_pascal_databunch(test):
     return data
 
 def get_penn_fudan_databunch(test):
-    img_sz = 416
+    img_sz = 320
     batch_sz = 8
     num_workers = 4
 
@@ -106,12 +107,13 @@ def get_penn_fudan_databunch(test):
     if test:
         src = src.split_by_idxs(np.arange(0, 2), np.arange(2, 4))
     else:
-        src = src.split_by_files(sorted_images[0:40])
+        src = src.split_by_files(sorted_images[0:30])
     src = src.label_from_func(get_y_func, classes=classes)
     train_transforms = [flip_affine(p=0.5)]
     val_transforms = []
     src = src.transform(
-        tfms=[train_transforms, val_transforms], size=img_sz, tfm_y=True)
+        tfms=[train_transforms, val_transforms], size=img_sz, tfm_y=True,
+        resize_method=ResizeMethod.SQUISH, padding_mode='zeros')
     data = src.databunch(path=data_dir, bs=batch_sz, collate_fn=bb_pad_collate,
                          num_workers=num_workers)
     data = data.normalize(imagenet_stats)
