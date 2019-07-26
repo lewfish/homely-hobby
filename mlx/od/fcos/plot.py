@@ -12,6 +12,7 @@ import torch
 import matplotlib.gridspec as gridspec
 
 from mlx.filesystem.utils import make_dir, zipdir
+from mlx.od.fcos.encoder import encode_targets
 
 def plot_data(data, output_dir, max_per_split=25):
     def _plot_data(split):
@@ -95,7 +96,7 @@ def plot_reg_center_arr(reg_arr, center_probs, stride):
     fig = plt.figure(constrained_layout=True, figsize=(12, 3.5))
     grid = gridspec.GridSpec(ncols=5, nrows=1, figure=fig)
     directions = ['top', 'left', 'bottom', 'right']
-    max_reg_val = np.amax(reg_arr)
+    max_reg_val = reg_arr.reshape(-1).max()
     for di, d in enumerate(directions):
         ax = fig.add_subplot(grid[di])
         ax.imshow(reg_arr[di], vmin=0, vmax=max_reg_val)
@@ -137,7 +138,7 @@ def plot_preds(data, model, classes, output_dir, max_plots=50, score_thresh=0.5)
         for stride, level_out in head_out.items():
             # Plot label_arr
             label_arr = level_out['label_arr'][0].detach().cpu()
-            label_probs = torch.sigmoid(label_arr).numpy()
+            label_probs = torch.sigmoid(label_arr)
             fig = plot_label_arr(label_probs, classes, stride)
             plt.savefig(
                 join(preds_dir, '{}-{}-label-arr.png'.format(img_id, stride)),
@@ -145,12 +146,40 @@ def plot_preds(data, model, classes, output_dir, max_plots=50, score_thresh=0.5)
             plt.close(fig)
 
             # Plot top, left, bottom, right from reg_arr and center_arr.
-            reg_arr = level_out['reg_arr'][0].detach().cpu().numpy()
+            reg_arr = level_out['reg_arr'][0].detach().cpu()
             center_arr = level_out['center_arr'][0][0].detach().cpu()
-            center_probs = torch.sigmoid(center_arr).numpy()
+            center_probs = torch.sigmoid(center_arr)
             fig = plot_reg_center_arr(reg_arr, center_probs, stride)
             plt.savefig(
                 join(preds_dir, '{}-{}-reg-center-arr.png'.format(img_id, stride)),
+                dpi=100, bbox_inches='tight')
+            plt.close(fig)
+
+        # Get encoding of ground truth targets.
+        h, w = x.size
+        boxes, labels = y.data
+        labels = torch.tensor(labels)
+        boxes = (boxes + 1.0) / 2.0
+        boxes *= torch.tensor([[h, w, h, w]], device=boxes.device, dtype=torch.float)
+        targets = encode_targets(boxes, labels, model.pyramid_shape, model.num_labels)
+
+        # Plot encoding of ground truth at each level.
+        for stride, level_targets in targets.items():
+            # Plot label_arr
+            label_probs = level_targets['label_arr'].detach().cpu()
+            fig = plot_label_arr(label_probs, classes, stride)
+            plt.savefig(
+                join(preds_dir, '{}-{}-label-arr-gt.png'.format(img_id, stride)),
+                dpi=100, bbox_inches='tight')
+            plt.close(fig)
+
+            # Plot top, left, bottom, right from reg_arr and center_arr.
+            reg_arr = level_targets['reg_arr'].detach().cpu()
+            center_arr = level_targets['center_arr'][0].detach().cpu()
+            center_probs = torch.sigmoid(center_arr)
+            fig = plot_reg_center_arr(reg_arr, center_probs, stride)
+            plt.savefig(
+                join(preds_dir, '{}-{}-reg-center-arr-gt.png'.format(img_id, stride)),
                 dpi=100, bbox_inches='tight')
             plt.close(fig)
 

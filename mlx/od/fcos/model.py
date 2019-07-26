@@ -263,7 +263,7 @@ class FCOS(nn.Module):
         if self.levels is not None:
             max_box_sides = [max_box_sides[l] for l in self.levels]
         iou_thresh = 0.5
-        pyramid_shape = [
+        self.pyramid_shape = [
             (s, m, h, w) for s, m, (h, w) in zip(strides, max_box_sides, hws)]
 
         head_out = {}
@@ -303,7 +303,7 @@ class FCOS(nn.Module):
             boxes = single_target['boxes']
             labels = single_target['labels']
             encoded_targets = encode_targets(
-                boxes, labels, pyramid_shape, self.num_labels)
+                boxes, labels, self.pyramid_shape, self.num_labels)
 
             single_head_out = {}
             for s in strides:
