@@ -53,7 +53,7 @@ def get_pascal_databunch(test):
 
     if test:
         img_sz = 256
-        batch_sz = 1
+        batch_sz = 4
         num_workers = 0
 
     data_dir = '/opt/data/pascal2007/data'
@@ -78,7 +78,9 @@ def get_pascal_databunch(test):
 
         src = ObjectItemList.from_folder(img_path)
         if test:
-            src = src.split_by_idxs(np.arange(0, 2), np.arange(2, 4))
+            # Setup to try overfitting a single batch. To do this we use the
+            # same train and val set.
+            src = src.split_by_idxs(np.arange(0, batch_sz), np.arange(0, batch_sz))
         else:
             src = src.split_by_files(val_images[0:250])
         src = src.label_from_func(get_y_func, classes=classes)
@@ -100,7 +102,7 @@ def get_penn_fudan_databunch(test):
 
     if test:
         img_sz = 256
-        batch_sz = 1
+        batch_sz = 4
         num_workers = 0
 
     data_uri = 's3://raster-vision-lf-dev/penn-fudan/penn-fudan.zip'
@@ -125,7 +127,9 @@ def get_penn_fudan_databunch(test):
 
     src = ObjectItemList.from_folder(img_path)
     if test:
-        src = src.split_by_idxs(np.arange(0, 2), np.arange(2, 4))
+        # Setup to try overfitting a single batch. To do this we use the
+        # same train and val set.
+        src = src.split_by_idxs(np.arange(0, batch_sz), np.arange(0, batch_sz))
     else:
         src = src.split_by_files(sorted_images[0:30])
     src = src.label_from_func(get_y_func, classes=classes)

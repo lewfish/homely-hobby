@@ -145,6 +145,7 @@ def main(dataset, test, s3_data, batch, debug, profile):
 
     print('Loading saved model...')
     learn.model.load_state_dict(torch.load(model_path))
+    print('Plotting predictions...')
     plot_preds(databunch, learn.model, databunch.classes, output_dir)
     if s3_data:
         sync_to_dir(output_dir, output_uri)
