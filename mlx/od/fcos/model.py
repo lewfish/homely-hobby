@@ -46,10 +46,16 @@ class FPN(nn.Module):
         self.backbone = nn.Sequential(*list(backbone.children())[0:-2])
 
         # Setup layers for top-down pathway.
-        self.cross_conv1 = nn.Conv2d(64, out_channels, 1)
-        self.cross_conv2 = nn.Conv2d(128, out_channels, 1)
-        self.cross_conv3 = nn.Conv2d(256, out_channels, 1)
-        self.cross_conv4 = nn.Conv2d(512, out_channels, 1)
+        # Use test input to determine the number of channels in each layer.
+        self.backbone(torch.rand((1, 3, 256, 256)))
+        self.cross_conv1 = nn.Conv2d(
+            self.backbone_out['layer1'].shape[1], out_channels, 1)
+        self.cross_conv2 = nn.Conv2d(
+            self.backbone_out['layer2'].shape[1], out_channels, 1)
+        self.cross_conv3 = nn.Conv2d(
+            self.backbone_out['layer3'].shape[1], out_channels, 1)
+        self.cross_conv4 = nn.Conv2d(
+            self.backbone_out['layer4'].shape[1], out_channels, 1)
 
     def forward(self, input):
         """Computes output of FPN.
