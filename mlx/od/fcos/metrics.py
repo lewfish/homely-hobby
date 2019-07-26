@@ -99,6 +99,7 @@ class CocoMetric(Callback):
     def __init__(self, num_labels):
         super().__init__()
         self.num_labels = num_labels
+        self.__name__ = 'mAP'
 
     def on_epoch_begin(self, **kwargs):
         self.outputs = []

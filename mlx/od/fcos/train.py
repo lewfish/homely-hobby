@@ -25,7 +25,7 @@ from mlx.od.fcos.model import FCOS
 from mlx.od.fcos.metrics import CocoMetric
 from mlx.od.fcos.plot import plot_preds, plot_data
 from mlx.od.fcos.callbacks import (
-    MyCSVLogger, ExportModelCallback, SyncCallback)
+    MyCSVLogger, ExportModelCallback, SyncCallback, TensorboardLogger)
 from mlx.od.fcos.data import get_databunch, setup_output
 from mlx.batch_utils import submit_job
 from mlx.filesystem.utils import (
@@ -138,7 +138,8 @@ def main(dataset, test, s3_data, batch, debug, profile):
     # Train model
     callbacks = [
         MyCSVLogger(learn, filename='log'),
-        ExportModelCallback(learn, model_path, monitor='coco_metric')
+        ExportModelCallback(learn, model_path, monitor='coco_metric'),
+        TensorboardLogger(learn, 'run')
     ]
     if s3_data:
         callbacks.append(SyncCallback(output_dir, output_uri, sync_interval))
