@@ -185,18 +185,26 @@ class FCOS(nn.Module):
             out: (dict) the output of the heads for the whole pyramid
             targets: (dict) the encoded targets for the whole pyramid
 
-            the format for both is:
-            (dict) of form {
+            the format for both is a dict with keys that are strides (int)
+            and values that are (dict) of form {`
                 'reg_arr': <tensor with shape (4, h*, w*)>,
                 'label_arr': <tensor with shape (num_labels, h*, w*)>,
                 'center_arr': <tensor with shape (1, h*, w*)>
             }
 
         Returns:
-            (tensor) with one float element containing loss
+            dict of form {
+                'reg_loss': <tensor[1]>,
+                'label_loss': <tensor[1]>,
+                'center_loss': <tensor[1]>
+            }
         """
-        lmbda = 1.0
         # should we normalize by total number of cells in pyramid?
+        device = list(out.values())[0]['reg_arr'].device
+        label_loss = torch.tensor(0., device=device)
+        reg_loss = torch.tensor(0., device=device)
+        center_loss = torch.tensor(0., device=device)
+
         for i, s in enumerate(out.keys()):
             pos_indicator = targets[s]['label_arr'].sum(dim=0)
             # Put lower bound on npos to avoid dividing by zero.
@@ -205,20 +213,20 @@ class FCOS(nn.Module):
             npos = torch.max(min_npos, npos)
 
             ll = focal_loss(
-                out[s]['label_arr'], targets[s]['label_arr'])
+                out[s]['label_arr'], targets[s]['label_arr']) / npos
+            label_loss += ll
+
             rl = pos_indicator.unsqueeze(0) * nn.functional.l1_loss(
                 out[s]['reg_arr'], targets[s]['reg_arr'], reduction='none')
-            rl = rl.reshape(-1).sum()
+            rl = rl.reshape(-1).sum() / npos
+            reg_loss += rl
+
             cl = pos_indicator.unsqueeze(0) * nn.functional.binary_cross_entropy_with_logits(
                 out[s]['center_arr'], targets[s]['center_arr'], reduction='none')
-            cl = cl.reshape(-1).sum()
-
-            l = (ll / npos) + lmbda * (rl / npos) + (cl / npos)
-            if i == 0:
-                loss = l
-            else:
-                loss += l
-        return loss
+            cl = cl.reshape(-1).sum() / npos
+            center_loss += cl
+        loss_dict = {'label_loss': label_loss, 'reg_loss': reg_loss, 'center_loss': center_loss}
+        return loss_dict
 
     def forward(self, input, targets=None, get_head_out=False):
         """Compute output of FCOS.
@@ -239,7 +247,11 @@ class FCOS(nn.Module):
             this returns boxes with score > 0.05. Further filtering based on
             score should be done before considering the prediction "final".
 
-            if target is a list, returns the loss as a single element tensor
+            if target is a list, returns the losses as dict of form {
+                'reg_loss': <tensor[1]>,
+                'label_loss': <tensor[1]>,
+                'center_loss': <tensor[1]>
+            }
         """
         fpn_out = self.fpn(input)
 
@@ -304,10 +316,16 @@ class FCOS(nn.Module):
                     'center_arr': head_out[s]['center_arr'][i]
                 }
             if i == 0:
-                loss = self.loss(single_head_out, encoded_targets)
+                loss_dict = self.loss(single_head_out, encoded_targets)
             else:
-                loss += self.loss(single_head_out, encoded_targets)
-        loss = loss / batch_sz
+                ld = self.loss(single_head_out, encoded_targets)
+                loss_dict['label_loss'] += ld['label_loss']
+                loss_dict['reg_loss'] += ld['reg_loss']
+                loss_dict['center_loss'] += ld['center_loss']
+
+        loss_dict['label_loss'] /= batch_sz
+        loss_dict['reg_loss'] /= batch_sz
+        loss_dict['center_loss'] /= batch_sz
         if get_head_out:
-            return loss, head_out
-        return loss
+            return loss_dict, head_out
+        return loss_dict

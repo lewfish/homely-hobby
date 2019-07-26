@@ -82,7 +82,8 @@ def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None
     out = None
     loss = torch.Tensor([0.0]).to(device=device)
     if model.training:
-        loss = model(images, targets)
+        loss_dict = model(images, targets)
+        loss = loss_dict['label_loss'] + loss_dict['reg_loss'] + loss_dict['center_loss']
     else:
         out = model(images)
 
