@@ -1,4 +1,5 @@
 from collections import defaultdict
+import math
 
 import torch
 import torch.nn as nn
@@ -46,10 +47,16 @@ class FPN(nn.Module):
         self.backbone = nn.Sequential(*list(backbone.children())[0:-2])
 
         # Setup layers for top-down pathway.
-        self.cross_conv1 = nn.Conv2d(64, out_channels, 1)
-        self.cross_conv2 = nn.Conv2d(128, out_channels, 1)
-        self.cross_conv3 = nn.Conv2d(256, out_channels, 1)
-        self.cross_conv4 = nn.Conv2d(512, out_channels, 1)
+        # Use test input to determine the number of channels in each layer.
+        self.backbone(torch.rand((1, 3, 256, 256)))
+        self.cross_conv1 = nn.Conv2d(
+            self.backbone_out['layer1'].shape[1], out_channels, 1)
+        self.cross_conv2 = nn.Conv2d(
+            self.backbone_out['layer2'].shape[1], out_channels, 1)
+        self.cross_conv3 = nn.Conv2d(
+            self.backbone_out['layer3'].shape[1], out_channels, 1)
+        self.cross_conv4 = nn.Conv2d(
+            self.backbone_out['layer4'].shape[1], out_channels, 1)
 
     def forward(self, input):
         """Computes output of FPN.
@@ -116,20 +123,17 @@ class FCOSHead(nn.Module):
 
         self.center_conv = nn.Conv2d(c, 1, 1)
 
-        # Initialize weights so outputs have more reasonable values, following
-        # Retinanet paper.
-        self.reg_conv.weight.data.fill_(0.0)
-        self.reg_conv.bias.data.fill_(1.0)
+        # initialization adapted from retinanet
+        # https://github.com/facebookresearch/maskrcnn-benchmark/blob/master/maskrcnn_benchmark/modeling/rpn/retinanet/retinanet.py
+        for modules in [self.reg_branch, self.reg_conv, self.label_branch, self.label_conv, self.center_conv]:
+            for l in modules.modules():
+                if isinstance(l, nn.Conv2d):
+                    torch.nn.init.normal_(l.weight, std=0.01)
+                    torch.nn.init.constant_(l.bias, 0)
 
-        self.label_conv.weight.data.fill_(0.0)
-        prior = torch.tensor(0.01)
-        logit = torch.log(prior / (1 - prior))
-        self.label_conv.bias.data.fill_(logit.item())
-
-        self.center_conv.weight.data.fill_(0.0)
-        prior = torch.tensor(0.5)
-        logit = torch.log(prior / (1 - prior))
-        self.center_conv.bias.data.fill_(logit)
+        prob = 0.01
+        logit = math.log(prob / (1 - prob))
+        torch.nn.init.constant_(self.label_conv.bias, logit)
 
     def forward(self, x, scale_param):
         """Computes output of head.
