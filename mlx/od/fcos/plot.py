@@ -35,7 +35,7 @@ def plot_data(data, output_dir, max_per_split=25):
     _plot_data('val')
 
 
-def plot_preds(data, model, classes, output_dir, max_plots=50, score_thresh=0.4):
+def plot_preds(data, model, classes, output_dir, max_plots=50, score_thresh=0.5):
     preds_dir = join(output_dir, 'preds')
     zip_path = join(output_dir, 'preds.zip')
     make_dir(preds_dir, force_empty=True)
