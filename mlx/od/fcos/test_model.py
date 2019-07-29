@@ -60,8 +60,10 @@ class TestFCOS(unittest.TestCase):
         labels = torch.tensor([0, 1])
         targets = [{'boxes': boxes, 'labels': labels}]
 
-        out = model(x, targets)
-        self.assertListEqual(list(out.shape), [])
+        loss_dict = model(x, targets)
+        self.assertTrue('label_loss' in loss_dict)
+        self.assertTrue('reg_loss' in loss_dict)
+        self.assertTrue('center_loss' in loss_dict)
 
 if __name__ == '__main__':
     unittest.main()
