@@ -25,7 +25,8 @@ from mlx.od.fcos.model import FCOS
 from mlx.od.fcos.metrics import CocoMetric
 from mlx.od.fcos.plot import plot_preds, plot_data
 from mlx.od.fcos.callbacks import (
-    MyCSVLogger, ExportModelCallback, SyncCallback, TensorboardLogger)
+    MyCSVLogger, ExportModelCallback, SyncCallback, TensorboardLogger,
+    SubLossMetric)
 from mlx.od.fcos.data import get_databunch, setup_output
 from mlx.batch_utils import submit_job
 from mlx.filesystem.utils import (
@@ -84,6 +85,7 @@ def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None
     if model.training:
         loss_dict = model(images, targets)
         loss = loss_dict['label_loss'] + loss_dict['reg_loss'] + loss_dict['center_loss']
+        cb_handler.state_dict['loss_dict'] = loss_dict
     else:
         out = model(images)
 
@@ -110,12 +112,12 @@ def main(dataset, test, s3_data, batch, debug, profile):
 
     # Setup options
     backbone_arch = 'resnet18'
-    levels = [0]
+    levels = [1]
     lr = 1e-4
     num_epochs = 25
-    sync_interval = 2
+    sync_interval = 1000
     if test:
-        num_epochs = 1
+        num_epochs = 5000
 
     # Setup data
     databunch = get_databunch(dataset, test)
@@ -136,10 +138,13 @@ def main(dataset, test, s3_data, batch, debug, profile):
         learn.model.load_state_dict(torch.load(model_path))
 
     # Train model
+    tb_logger = TensorboardLogger(learn, 'run')
+    tb_logger.set_extra_metrics(['label_loss', 'reg_loss', 'center_loss'])
     callbacks = [
         MyCSVLogger(learn, filename='log'),
         ExportModelCallback(learn, model_path, monitor='coco_metric'),
-        TensorboardLogger(learn, 'run')
+        tb_logger,
+        SubLossMetric(learn)
     ]
     if s3_data:
         callbacks.append(SyncCallback(output_dir, output_uri, sync_interval))

@@ -1,8 +1,10 @@
 import shutil
 from typing import Any
+from os.path import join
 
 import torch
-from fastai.callbacks import CSVLogger, Callback, TrackerCallback
+from fastai.callbacks import (
+    CSVLogger, Callback, TrackerCallback, LearnerCallback, add_metrics)
 from fastai.basic_train import Learner
 
 from mlx.filesystem.utils import (sync_to_dir)
@@ -56,7 +58,31 @@ class MyCSVLogger(CSVLogger):
         self.file.flush()
         return out
 
-# This code was copied from
+class SubLossMetric(LearnerCallback):
+    _order=-20 # Needs to run before the recorder
+    def __init__(self, learn):
+        super().__init__(learn)
+
+    def on_train_begin(self, **kwargs):
+        self.learn.recorder.add_metric_names(['label_loss', 'reg_loss', 'center_loss'])
+
+    def on_batch_end(self, train, **kwargs):
+        if train:
+            loss_dict = kwargs['loss_dict']
+            self.label_loss += loss_dict['label_loss'].detach().cpu().item()
+            self.reg_loss += loss_dict['reg_loss'].detach().cpu().item()
+            self.center_loss += loss_dict['center_loss'].detach().cpu().item()
+
+    def on_epoch_begin(self, **kwargs):
+        self.label_loss = 0.
+        self.reg_loss = 0.
+        self.center_loss = 0.
+
+    def on_epoch_end(self, last_metrics, **kwargs):
+        return add_metrics(
+            last_metrics, [self.label_loss, self.reg_loss, self.center_loss])
+
+# This code was adapted from
 # https://github.com/Pendar2/fastai-tensorboard-callback/blob/master/fastai_tensorboard_callback/tensorboard_cb.py
 from tensorboardX import SummaryWriter
 from fastai.basics import *
@@ -68,9 +94,12 @@ class TensorboardLogger(Callback):
     histogram_freq:int=100
     path:str=None
 
+    def set_extra_metrics(self, extra_metrics):
+        self.extra_metrics = extra_metrics
+
     def __post_init__(self):
-        self.path = self.path or os.path.join(self.learn.path, "logs")
-        self.log_dir = os.path.join(self.path, self.run_name)
+        self.path = self.path or join(self.learn.path, "logs")
+        self.log_dir = join(self.path, self.run_name)
 
     def on_train_begin(self, **kwargs):
         self.writer = SummaryWriter(log_dir=self.log_dir)
@@ -78,7 +107,10 @@ class TensorboardLogger(Callback):
     def on_epoch_end(self, **kwargs):
         iteration = kwargs["iteration"]
         metrics = kwargs["last_metrics"]
+
         metrics_names = ["valid_loss"] + [o.__name__ for o in self.learn.metrics]
+        if self.extra_metrics is not None:
+            metrics_names += self.extra_metrics
 
         for val, name in zip(metrics, metrics_names):
             self.writer.add_scalar(name, val, iteration)
