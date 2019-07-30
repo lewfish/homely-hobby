@@ -16,11 +16,11 @@ datasets = [pascal2007, penn_fudan]
 
 output_config = {
     pascal2007: {
-        'output_uri': 's3://raster-vision-lf-dev/pascal2007/output-test',
+        'output_uri': 's3://raster-vision-lf-dev/pascal2007/output-iouloss2',
         'output_dir': '/opt/data/pascal2007/output/'
     },
     penn_fudan: {
-        'output_uri': 's3://raster-vision-lf-dev/penn-fudan/output-test',
+        'output_uri': 's3://raster-vision-lf-dev/penn-fudan/output-overfit',
         'output_dir': '/opt/data/penn-fudan/output/'
     }
 }
@@ -39,22 +39,25 @@ def setup_output(dataset, s3_data=False):
         sync_from_dir(output_uri, output_dir)
     return output_dir, output_uri
 
-def get_databunch(dataset, test):
+def get_databunch(dataset, test=False, overfit=False):
     validate_dataset(dataset)
     if dataset == pascal2007:
-        return get_pascal_databunch(test)
+        return get_pascal_databunch(test, overfit)
     elif dataset == penn_fudan:
-        return get_penn_fudan_databunch(test)
+        return get_penn_fudan_databunch(test, overfit)
 
-def get_pascal_databunch(test):
-    img_sz = 320
-    batch_sz = 16
+def get_pascal_databunch(test=False, overfit=False):
+    img_sz = 224
+    batch_sz = 32
     num_workers = 4
 
     if test:
-        img_sz = 256
+        img_sz = 224
         batch_sz = 4
         num_workers = 0
+    if overfit:
+        img_sz = 224
+        batch_sz = 4
 
     data_dir = '/opt/data/pascal2007/data'
     untar_data(URLs.PASCAL_2007, dest=data_dir)
@@ -77,32 +80,38 @@ def get_pascal_databunch(test):
         classes = ['background'] + classes
 
         src = ObjectItemList.from_folder(img_path)
-        if test:
-            # Setup to try overfitting a single batch. To do this we use the
-            # same train and val set.
-            src = src.split_by_idxs(np.arange(0, batch_sz), np.arange(0, batch_sz))
+        if overfit:
+            # Don't use any validation set so training will run faster.
+            src = src.split_by_idxs(np.arange(4, 8), [])
+        elif test:
+            src = src.split_by_idxs(
+                np.arange(0, batch_sz), np.arange(batch_sz, batch_sz * 2))
         else:
             src = src.split_by_files(val_images[0:250])
         src = src.label_from_func(get_y_func, classes=classes)
-        train_transforms = [flip_affine(p=0.5)]
-        val_transforms = []
+        train_transforms, val_transforms = [], []
+        if not overfit:
+            train_transforms = [flip_affine(p=0.5)]
         src = src.transform(
             tfms=[train_transforms, val_transforms], size=img_sz, tfm_y=True,
-            resize_method=ResizeMethod.SQUISH, padding_mode='zeros')
+            resize_method=ResizeMethod.SQUISH)
         data = src.databunch(path=data_dir, bs=batch_sz, collate_fn=bb_pad_collate,
                              num_workers=num_workers)
     data.classes = classes
     return data
 
-def get_penn_fudan_databunch(test):
-    img_sz = 320
-    batch_sz = 8
+def get_penn_fudan_databunch(test=False, overfit=False):
+    img_sz = 224
+    batch_sz = 32
     num_workers = 4
 
     if test:
-        img_sz = 256
+        img_sz = 224
         batch_sz = 4
         num_workers = 0
+    if overfit:
+        img_sz = 224
+        batch_sz = 4
 
     data_uri = 's3://raster-vision-lf-dev/penn-fudan/penn-fudan.zip'
     data_dir = '/opt/data/penn-fudan/data'
@@ -125,18 +134,21 @@ def get_penn_fudan_databunch(test):
         classes = ['background'] + classes
 
     src = ObjectItemList.from_folder(img_path)
-    if test:
-        # Setup to try overfitting a single batch. To do this we use the
-        # same train and val set.
-        src = src.split_by_idxs(np.arange(0, batch_sz), np.arange(0, batch_sz))
+    if overfit:
+        # Don't use any validation set so training will run faster.
+        src = src.split_by_idxs(np.arange(4, 8), [])
+    elif test:
+        src = src.split_by_idxs(
+            np.arange(0, batch_sz), np.arange(batch_sz, batch_sz * 2))
     else:
         src = src.split_by_files(sorted_images[0:30])
+
     src = src.label_from_func(get_y_func, classes=classes)
     train_transforms = [flip_affine(p=0.5)]
     val_transforms = []
     src = src.transform(
         tfms=[train_transforms, val_transforms], size=img_sz, tfm_y=True,
-        resize_method=ResizeMethod.SQUISH, padding_mode='zeros')
+        resize_method=ResizeMethod.SQUISH)
     data = src.databunch(path=data_dir, bs=batch_sz, collate_fn=bb_pad_collate,
                          num_workers=num_workers)
     data.classes = classes

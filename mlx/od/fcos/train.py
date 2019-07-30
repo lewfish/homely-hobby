@@ -32,7 +32,7 @@ from mlx.batch_utils import submit_job
 from mlx.filesystem.utils import (
     make_dir, sync_to_dir, zipdir, unzip, download_if_needed)
 
-def run_on_batch(dataset_name, test, debug, profile):
+def run_on_batch(dataset_name, test, overfit, debug, profile):
     job_name = 'mlx_train_fcos-' + str(uuid.uuid4())
     job_def = 'lewfishPyTorchCustomGpuJobDefinition'
     job_queue = 'lewfishRasterVisionGpuJobQueue'
@@ -49,6 +49,8 @@ def run_on_batch(dataset_name, test, debug, profile):
 
     if test:
         cmd_list.append('--test')
+    if overfit:
+        cmd_list.append('--overfit')
     submit_job(job_name, job_def, job_queue, cmd_list)
     exit()
 
@@ -102,25 +104,32 @@ def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None
 @click.command()
 @click.argument('dataset')
 @click.option('--test', is_flag=True, help='Run small test experiment')
+@click.option('--overfit', is_flag=True, help='Run overfitting experiment')
 @click.option('--s3-data', is_flag=True, help='Use data and store results on S3')
 @click.option('--batch', is_flag=True, help='Submit Batch job for full experiment')
 @click.option('--debug', is_flag=True, help='Run via debugger')
 @click.option('--profile', is_flag=True, help='Run via profiler')
-def main(dataset, test, s3_data, batch, debug, profile):
+def main(dataset, test, overfit, s3_data, batch, debug, profile):
     if batch:
-        run_on_batch(dataset, test, debug, profile)
+        run_on_batch(dataset, test, overfit, debug, profile)
 
     # Setup options
     backbone_arch = 'resnet18'
     levels = [1]
     lr = 1e-4
-    num_epochs = 25
-    sync_interval = 1000
+    num_epochs = 30
+    sync_interval = 2
+
+    if overfit:
+        num_epochs = 500
+        sync_interval = 1000
+        lr = 1e-4
+
     if test:
-        num_epochs = 5000
+        num_epochs = 1
 
     # Setup data
-    databunch = get_databunch(dataset, test)
+    databunch = get_databunch(dataset, test, overfit)
     output_dir, output_uri = setup_output(dataset, s3_data)
     print(databunch)
     plot_data(databunch, output_dir)
@@ -139,7 +148,7 @@ def main(dataset, test, s3_data, batch, debug, profile):
 
     # Train model
     tb_logger = TensorboardLogger(learn, 'run')
-    tb_logger.set_extra_metrics(['label_loss', 'reg_loss', 'center_loss'])
+    tb_logger.set_extra_args(['label_loss', 'reg_loss', 'center_loss'], overfit)
     callbacks = [
         MyCSVLogger(learn, filename='log'),
         ExportModelCallback(learn, model_path, monitor='coco_metric'),
@@ -148,12 +157,19 @@ def main(dataset, test, s3_data, batch, debug, profile):
     ]
     if s3_data:
         callbacks.append(SyncCallback(output_dir, output_uri, sync_interval))
-    learn.fit_one_cycle(num_epochs, lr, callbacks=callbacks)
 
-    print('Loading saved model...')
-    learn.model.load_state_dict(torch.load(model_path))
+    if overfit:
+        learn.fit(num_epochs, lr, callbacks=callbacks)
+        learn.validate(databunch.train_dl, metrics=metrics)
+        plot_dataset = databunch.train_ds
+    else:
+        learn.fit_one_cycle(num_epochs, lr, callbacks=callbacks)
+        # print('Loading saved model...')
+        # learn.model.load_state_dict(torch.load(model_path))
+        plot_dataset = databunch.valid_ds
+
     print('Plotting predictions...')
-    plot_preds(databunch, learn.model, databunch.classes, output_dir)
+    plot_preds(plot_dataset, learn.model, databunch.classes, output_dir)
     if s3_data:
         sync_to_dir(output_dir, output_uri)
 
