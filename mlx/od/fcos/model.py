@@ -294,7 +294,7 @@ class FCOS(nn.Module):
                 ], dim=1)
                 good_inds = batched_nms(boxes, nms_scores, labels, iou_thresh)
                 boxes, labels, scores = \
-                    boxes[good_inds, :], labels[good_inds], scores[good_inds]
+                    boxes[good_inds, :], labels[good_inds], nms_scores[good_inds]
                 out.append({'boxes': boxes, 'labels': labels, 'scores': scores})
             if get_head_out:
                 return out, head_out
