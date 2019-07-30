@@ -116,13 +116,13 @@ class FCOSHead(nn.Module):
 
         self.reg_branch = nn.Sequential(
             *[ConvBlock(c, c, 3, padding=1) for i in range(4)])
-        self.reg_conv = nn.Conv2d(c, 4, 1)
+        self.reg_conv = nn.Conv2d(c, 4, 3, padding=1)
 
         self.label_branch = nn.Sequential(
             *[ConvBlock(c, c, 3, padding=1) for i in range(4)])
-        self.label_conv = nn.Conv2d(c, num_labels, 1)
+        self.label_conv = nn.Conv2d(c, num_labels, 3, padding=1)
 
-        self.center_conv = nn.Conv2d(c, 1, 1)
+        self.center_conv = nn.Conv2d(c, 1, 3, padding=1)
 
         # initialization adapted from retinanet
         # https://github.com/facebookresearch/maskrcnn-benchmark/blob/master/maskrcnn_benchmark/modeling/rpn/retinanet/retinanet.py
