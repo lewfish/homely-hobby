@@ -72,13 +72,19 @@ class SubLossMetric(LearnerCallback):
             self.label_loss += loss_dict['label_loss'].detach().cpu().item()
             self.reg_loss += loss_dict['reg_loss'].detach().cpu().item()
             self.center_loss += loss_dict['center_loss'].detach().cpu().item()
+            self.num_batches += 1
 
     def on_epoch_begin(self, **kwargs):
         self.label_loss = 0.
         self.reg_loss = 0.
         self.center_loss = 0.
+        self.num_batches = 0
 
     def on_epoch_end(self, last_metrics, **kwargs):
+        self.label_loss /= self.num_batches
+        self.reg_loss /= self.num_batches
+        self.center_loss /= self.num_batches
+
         return add_metrics(
             last_metrics, [self.label_loss, self.reg_loss, self.center_loss])
 
