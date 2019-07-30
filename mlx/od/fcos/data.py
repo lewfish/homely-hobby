@@ -84,6 +84,8 @@ def get_pascal_databunch(test=False, overfit=False):
             # Don't use any validation set so training will run faster.
             src = src.split_by_idxs(np.arange(4, 8), [])
         elif test:
+            # Make images not have any ground truth boxes
+            get_y_func = lambda o: [[], []]
             src = src.split_by_idxs(
                 np.arange(0, batch_sz), np.arange(batch_sz, batch_sz * 2))
         else:
