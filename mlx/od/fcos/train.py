@@ -18,6 +18,7 @@ from fastai.basic_train import Learner
 import torch
 from torch import nn, Tensor
 from fastai.callback import CallbackHandler
+from fastai.callbacks import TrackEpochCallback
 from fastai.core import ifnone
 from fastai.torch_core import OptLossFunc, OptOptimizer, Optional, Tuple, Union
 
@@ -25,8 +26,8 @@ from mlx.od.fcos.model import FCOS
 from mlx.od.fcos.metrics import CocoMetric
 from mlx.od.fcos.plot import plot_preds, plot_data
 from mlx.od.fcos.callbacks import (
-    MyCSVLogger, ExportModelCallback, SyncCallback, TensorboardLogger,
-    SubLossMetric)
+    MyCSVLogger, SyncCallback, TensorboardLogger,
+    SubLossMetric, MySaveModelCallback)
 from mlx.od.fcos.data import get_databunch, setup_output
 from mlx.batch_utils import submit_job
 from mlx.filesystem.utils import (
@@ -140,21 +141,15 @@ def main(dataset, test, overfit, s3_data, batch, debug, profile):
     metrics = [CocoMetric(num_labels)]
     learn = Learner(databunch, model, path=output_dir, metrics=metrics)
     fastai.basic_train.loss_batch = loss_batch
-    model_path = join(output_dir, 'model.pth')
-
-    if os.path.isfile(model_path):
-        print('Loading saved model...')
-        learn.model.load_state_dict(torch.load(model_path))
+    best_model_path = join(output_dir, 'best_model.pth')
+    last_model_path = join(output_dir, 'last_model.pth')
 
     # Train model
-    tb_logger = TensorboardLogger(learn, 'run')
-    tb_logger.set_extra_args(['label_loss', 'reg_loss', 'center_loss'], overfit)
     callbacks = [
         MyCSVLogger(learn, filename='log'),
-        ExportModelCallback(learn, model_path, monitor='coco_metric'),
-        tb_logger,
         SubLossMetric(learn)
     ]
+
     if s3_data:
         callbacks.append(SyncCallback(output_dir, output_uri, sync_interval))
 
@@ -162,10 +157,20 @@ def main(dataset, test, overfit, s3_data, batch, debug, profile):
         learn.fit(num_epochs, lr, callbacks=callbacks)
         learn.validate(databunch.train_dl, metrics=metrics)
         plot_dataset = databunch.train_ds
+        torch.save(learn.model.state_dict(), last_model_path)
     else:
+        tb_logger = TensorboardLogger(learn, 'run')
+        tb_logger.set_extra_args(['label_loss', 'reg_loss', 'center_loss'], overfit)
+
+        extra_callbacks = [
+            MySaveModelCallback(
+                learn, best_model_path, monitor='coco_metric', every='improvement'),
+            MySaveModelCallback(learn, last_model_path, every='epoch'),
+            TrackEpochCallback(learn),
+            tb_logger
+        ]
+        callbacks.extend(extra_callbacks)
         learn.fit_one_cycle(num_epochs, lr, callbacks=callbacks)
-        # print('Loading saved model...')
-        # learn.model.load_state_dict(torch.load(model_path))
         plot_dataset = databunch.valid_ds
 
     print('Plotting predictions...')
