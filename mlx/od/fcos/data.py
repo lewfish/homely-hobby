@@ -91,7 +91,6 @@ def get_pascal_databunch(test):
             resize_method=ResizeMethod.SQUISH, padding_mode='zeros')
         data = src.databunch(path=data_dir, bs=batch_sz, collate_fn=bb_pad_collate,
                              num_workers=num_workers)
-        data = data.normalize(imagenet_stats)
     data.classes = classes
     return data
 
@@ -140,6 +139,5 @@ def get_penn_fudan_databunch(test):
         resize_method=ResizeMethod.SQUISH, padding_mode='zeros')
     data = src.databunch(path=data_dir, bs=batch_sz, collate_fn=bb_pad_collate,
                          num_workers=num_workers)
-    data = data.normalize(imagenet_stats)
     data.classes = classes
     return data
