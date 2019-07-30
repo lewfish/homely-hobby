@@ -100,8 +100,9 @@ class ConvBlock(nn.Module):
 
     def forward(self, x):
         x = self.conv(x)
+        x = self.bn(x)
         x = nn.functional.relu(x)
-        return self.bn(x)
+        return x
 
 class FCOSHead(nn.Module):
     """Head for FCOS model.
