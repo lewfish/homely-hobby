@@ -100,8 +100,9 @@ class TensorboardLogger(Callback):
     histogram_freq:int=100
     path:str=None
 
-    def set_extra_metrics(self, extra_metrics):
+    def set_extra_args(self, extra_metrics, overfit):
         self.extra_metrics = extra_metrics
+        self.overfit = overfit
 
     def __post_init__(self):
         self.path = self.path or join(self.learn.path, "logs")
@@ -115,10 +116,15 @@ class TensorboardLogger(Callback):
         metrics = kwargs["last_metrics"]
 
         metrics_names = ["valid_loss"] + [o.__name__ for o in self.learn.metrics]
+        if self.overfit:
+            metrics_names = [o.__name__ for o in self.learn.metrics]
+
         if self.extra_metrics is not None:
             metrics_names += self.extra_metrics
 
         for val, name in zip(metrics, metrics_names):
+            if val is None:
+                val = -1
             self.writer.add_scalar(name, val, iteration)
 
         for name, emb in self.learn.model.named_children():
