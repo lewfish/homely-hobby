@@ -175,7 +175,7 @@ def plot_preds(dataset, model, classes, output_dir, max_plots=50, score_thresh=0
             # Plot top, left, bottom, right from reg_arr and center_arr.
             reg_arr = level_targets['reg_arr'].detach().cpu()
             center_arr = level_targets['center_arr'][0].detach().cpu()
-            center_probs = torch.sigmoid(center_arr)
+            center_probs = center_arr
             fig = plot_reg_center_arr(reg_arr, center_probs, stride)
             plt.savefig(
                 join(preds_dir, '{}-{}-reg-center-arr-gt.png'.format(img_id, stride)),
