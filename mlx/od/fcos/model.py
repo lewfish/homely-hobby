@@ -10,6 +10,7 @@ from mlx.od.fcos.decoder import decode_output
 from mlx.od.fcos.encoder import encode_targets
 from mlx.od.fcos.nms import compute_nms
 from mlx.od.fcos.loss import focal_loss
+from mlx.od.fcos.iou_loss import IOULoss
 
 class FPN(nn.Module):
     """Feature Pyramid Network backbone.
@@ -100,8 +101,9 @@ class ConvBlock(nn.Module):
 
     def forward(self, x):
         x = self.conv(x)
+        x = self.bn(x)
         x = nn.functional.relu(x)
-        return self.bn(x)
+        return x
 
 class FCOSHead(nn.Module):
     """Head for FCOS model.
@@ -115,13 +117,13 @@ class FCOSHead(nn.Module):
 
         self.reg_branch = nn.Sequential(
             *[ConvBlock(c, c, 3, padding=1) for i in range(4)])
-        self.reg_conv = nn.Conv2d(c, 4, 1)
+        self.reg_conv = nn.Conv2d(c, 4, 3, padding=1)
 
         self.label_branch = nn.Sequential(
             *[ConvBlock(c, c, 3, padding=1) for i in range(4)])
-        self.label_conv = nn.Conv2d(c, num_labels, 1)
+        self.label_conv = nn.Conv2d(c, num_labels, 3, padding=1)
 
-        self.center_conv = nn.Conv2d(c, 1, 1)
+        self.center_conv = nn.Conv2d(c, 1, 3, padding=1)
 
         # initialization adapted from retinanet
         # https://github.com/facebookresearch/maskrcnn-benchmark/blob/master/maskrcnn_benchmark/modeling/rpn/retinanet/retinanet.py
@@ -185,40 +187,47 @@ class FCOS(nn.Module):
             out: (dict) the output of the heads for the whole pyramid
             targets: (dict) the encoded targets for the whole pyramid
 
-            the format for both is:
-            (dict) of form {
+            the format for both is a dict with keys that are strides (int)
+            and values that are (dict) of form {`
                 'reg_arr': <tensor with shape (4, h*, w*)>,
                 'label_arr': <tensor with shape (num_labels, h*, w*)>,
                 'center_arr': <tensor with shape (1, h*, w*)>
             }
 
         Returns:
-            (tensor) with one float element containing loss
+            dict of form {
+                'reg_loss': <tensor[1]>,
+                'label_loss': <tensor[1]>,
+                'center_loss': <tensor[1]>
+            }
         """
-        lmbda = 1.0
-        # should we normalize by total number of cells in pyramid?
+        device = list(out.values())[0]['reg_arr'].device
+        label_loss = torch.tensor(0., device=device)
+        reg_loss = torch.tensor(0., device=device)
+        center_loss = torch.tensor(0., device=device)
+        iou_loss = IOULoss()
+
         for i, s in enumerate(out.keys()):
-            pos_indicator = targets[s]['label_arr'].sum(dim=0)
-            # Put lower bound on npos to avoid dividing by zero.
-            npos = pos_indicator.reshape(-1).sum()
-            min_npos = torch.ones_like(npos)
-            npos = torch.max(min_npos, npos)
+            num_labels = targets[s]['label_arr'].shape[0]
+            targets_label_arr = targets[s]['label_arr'].reshape(num_labels, -1).permute(1, 0)
+            out_label_arr = out[s]['label_arr'].reshape(num_labels, -1).permute(1, 0)
+            pos_indicator = targets_label_arr.sum(1) != 0
+            npos = pos_indicator.sum().item() + 1
 
-            ll = focal_loss(
-                out[s]['label_arr'], targets[s]['label_arr'])
-            rl = pos_indicator.unsqueeze(0) * nn.functional.l1_loss(
-                out[s]['reg_arr'], targets[s]['reg_arr'], reduction='none')
-            rl = rl.reshape(-1).sum()
-            cl = pos_indicator.unsqueeze(0) * nn.functional.binary_cross_entropy_with_logits(
-                out[s]['center_arr'], targets[s]['center_arr'], reduction='none')
-            cl = cl.reshape(-1).sum()
+            targets_reg_arr = targets[s]['reg_arr'].reshape(4, -1).permute(1, 0)[pos_indicator, :]
+            targets_center_arr = targets[s]['center_arr'].reshape(1, -1).permute(1, 0)[pos_indicator, :]
+            out_reg_arr = out[s]['reg_arr'].reshape(4, -1).permute(1, 0)[pos_indicator, :]
+            out_center_arr = out[s]['center_arr'].reshape(1, -1).permute(1, 0)[pos_indicator, :]
 
-            l = (ll / npos) + lmbda * (rl / npos) + (cl / npos)
-            if i == 0:
-                loss = l
-            else:
-                loss += l
-        return loss
+            label_loss += focal_loss(out_label_arr, targets_label_arr) / npos
+            if npos > 1:
+                reg_loss += iou_loss(out_reg_arr, targets_reg_arr, targets_center_arr)
+                center_loss += nn.functional.binary_cross_entropy_with_logits(
+                    out_center_arr, targets_center_arr, reduction='mean')
+
+        reg_scale = 0.01
+        loss_dict = {'label_loss': label_loss, 'reg_loss': reg_loss * reg_scale, 'center_loss': center_loss}
+        return loss_dict
 
     def forward(self, input, targets=None, get_head_out=False):
         """Compute output of FCOS.
@@ -239,7 +248,11 @@ class FCOS(nn.Module):
             this returns boxes with score > 0.05. Further filtering based on
             score should be done before considering the prediction "final".
 
-            if target is a list, returns the loss as a single element tensor
+            if target is a list, returns the losses as dict of form {
+                'reg_loss': <tensor[1]>,
+                'label_loss': <tensor[1]>,
+                'center_loss': <tensor[1]>
+            }
         """
         fpn_out = self.fpn(input)
 
@@ -251,7 +264,7 @@ class FCOS(nn.Module):
         if self.levels is not None:
             max_box_sides = [max_box_sides[l] for l in self.levels]
         iou_thresh = 0.5
-        pyramid_shape = [
+        self.pyramid_shape = [
             (s, m, h, w) for s, m, (h, w) in zip(strides, max_box_sides, hws)]
 
         head_out = {}
@@ -281,7 +294,7 @@ class FCOS(nn.Module):
                 ], dim=1)
                 good_inds = batched_nms(boxes, nms_scores, labels, iou_thresh)
                 boxes, labels, scores = \
-                    boxes[good_inds, :], labels[good_inds], scores[good_inds]
+                    boxes[good_inds, :], labels[good_inds], nms_scores[good_inds]
                 out.append({'boxes': boxes, 'labels': labels, 'scores': scores})
             if get_head_out:
                 return out, head_out
@@ -291,7 +304,7 @@ class FCOS(nn.Module):
             boxes = single_target['boxes']
             labels = single_target['labels']
             encoded_targets = encode_targets(
-                boxes, labels, pyramid_shape, self.num_labels)
+                boxes, labels, self.pyramid_shape, self.num_labels)
 
             single_head_out = {}
             for s in strides:
@@ -304,10 +317,16 @@ class FCOS(nn.Module):
                     'center_arr': head_out[s]['center_arr'][i]
                 }
             if i == 0:
-                loss = self.loss(single_head_out, encoded_targets)
+                loss_dict = self.loss(single_head_out, encoded_targets)
             else:
-                loss += self.loss(single_head_out, encoded_targets)
-        loss = loss / batch_sz
+                ld = self.loss(single_head_out, encoded_targets)
+                loss_dict['label_loss'] += ld['label_loss']
+                loss_dict['reg_loss'] += ld['reg_loss']
+                loss_dict['center_loss'] += ld['center_loss']
+
+        loss_dict['label_loss'] /= batch_sz
+        loss_dict['reg_loss'] /= batch_sz
+        loss_dict['center_loss'] /= batch_sz
         if get_head_out:
-            return loss, head_out
-        return loss
+            return loss_dict, head_out
+        return loss_dict

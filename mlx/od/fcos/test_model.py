@@ -60,8 +60,32 @@ class TestFCOS(unittest.TestCase):
         labels = torch.tensor([0, 1])
         targets = [{'boxes': boxes, 'labels': labels}]
 
-        out = model(x, targets)
-        self.assertListEqual(list(out.shape), [])
+        loss_dict = model(x, targets)
+        self.assertTrue('label_loss' in loss_dict)
+        self.assertTrue('reg_loss' in loss_dict)
+        self.assertTrue('center_loss' in loss_dict)
+
+    def test_backwards(self):
+        h, w = 64, 64
+        num_labels = 3
+        x = 2.0 * torch.rand((1, 3, h, w)) - 1.0
+        model = FCOS('resnet18', num_labels, pretrained=False)
+
+        boxes = torch.tensor([
+            [0, 0, 16, 16],
+            [16, 16, 32, 32]
+        ])
+        labels = torch.tensor([0, 1])
+        targets = [{'boxes': boxes, 'labels': labels}]
+
+        model.train()
+        model.zero_grad()
+        loss_dict = model(x, targets)
+        loss = sum(list(loss_dict.values()))
+        loss.backward()
+
+        for param in model.parameters():
+            self.assertTrue(len(torch.nonzero(param.grad)) > 0)
 
 if __name__ == '__main__':
     unittest.main()

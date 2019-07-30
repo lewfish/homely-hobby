@@ -8,33 +8,56 @@ from fastai.vision import (
    flip_affine, bb_pad_collate, ResizeMethod)
 
 from mlx.filesystem.utils import (
-    make_dir, sync_to_dir, zipdir, unzip, download_if_needed)
+    make_dir, sync_to_dir, sync_from_dir, zipdir, unzip, download_if_needed)
 
-def setup_data(dataset_name, test):
-    if dataset_name == 'pascal2007':
-        output_uri = 's3://raster-vision-lf-dev/pascal2007/output-better-init'
-        output_dir = '/opt/data/pascal2007/output/'
-        make_dir(output_dir, force_empty=True)
-        databunch = get_pascal_databunch(test)
-        return output_dir, output_uri, databunch
-    elif dataset_name == 'penn-fudan':
-        output_uri = 's3://raster-vision-lf-dev/penn-fudan/output-better-init'
-        output_dir = '/opt/data/penn-fudan/output/'
-        make_dir(output_dir, force_empty=True)
-        databunch = get_penn_fudan_databunch(test)
-        return output_dir, output_uri, databunch
-    else:
-        raise ValueError('dataset_name {} is invalid'.format(dataset_name))
+pascal2007 = 'pascal2007'
+penn_fudan = 'penn-fudan'
+datasets = [pascal2007, penn_fudan]
 
-def get_pascal_databunch(test):
-    img_sz = 320
-    batch_sz = 16
+output_config = {
+    pascal2007: {
+        'output_uri': 's3://raster-vision-lf-dev/pascal2007/output-iouloss2',
+        'output_dir': '/opt/data/pascal2007/output/'
+    },
+    penn_fudan: {
+        'output_uri': 's3://raster-vision-lf-dev/penn-fudan/output-overfit',
+        'output_dir': '/opt/data/penn-fudan/output/'
+    }
+}
+
+def validate_dataset(dataset):
+    if dataset not in datasets:
+        raise ValueError('dataset {} is invalid'.format(dataset))
+
+def setup_output(dataset, s3_data=False):
+    validate_dataset(dataset)
+    output_uri = output_config[dataset]['output_uri']
+    output_dir = output_config[dataset]['output_dir']
+    make_dir(output_dir)
+    if s3_data:
+        make_dir(output_dir, force_empty=True)
+        sync_from_dir(output_uri, output_dir)
+    return output_dir, output_uri
+
+def get_databunch(dataset, test=False, overfit=False):
+    validate_dataset(dataset)
+    if dataset == pascal2007:
+        return get_pascal_databunch(test, overfit)
+    elif dataset == penn_fudan:
+        return get_penn_fudan_databunch(test, overfit)
+
+def get_pascal_databunch(test=False, overfit=False):
+    img_sz = 224
+    batch_sz = 32
     num_workers = 4
 
     if test:
-        img_sz = 256
-        batch_sz = 1
+        img_sz = 224
+        batch_sz = 4
         num_workers = 0
+    if overfit:
+        img_sz = 224
+        batch_sz = 4
 
     data_dir = '/opt/data/pascal2007/data'
     untar_data(URLs.PASCAL_2007, dest=data_dir)
@@ -57,31 +80,38 @@ def get_pascal_databunch(test):
         classes = ['background'] + classes
 
         src = ObjectItemList.from_folder(img_path)
-        if test:
-            src = src.split_by_idxs(np.arange(0, 2), np.arange(2, 4))
+        if overfit:
+            # Don't use any validation set so training will run faster.
+            src = src.split_by_idxs(np.arange(4, 8), [])
+        elif test:
+            src = src.split_by_idxs(
+                np.arange(0, batch_sz), np.arange(batch_sz, batch_sz * 2))
         else:
             src = src.split_by_files(val_images[0:250])
         src = src.label_from_func(get_y_func, classes=classes)
-        train_transforms = [flip_affine(p=0.5)]
-        val_transforms = []
+        train_transforms, val_transforms = [], []
+        if not overfit:
+            train_transforms = [flip_affine(p=0.5)]
         src = src.transform(
             tfms=[train_transforms, val_transforms], size=img_sz, tfm_y=True,
-            resize_method=ResizeMethod.SQUISH, padding_mode='zeros')
+            resize_method=ResizeMethod.SQUISH)
         data = src.databunch(path=data_dir, bs=batch_sz, collate_fn=bb_pad_collate,
                              num_workers=num_workers)
-        data = data.normalize(imagenet_stats)
     data.classes = classes
     return data
 
-def get_penn_fudan_databunch(test):
-    img_sz = 320
-    batch_sz = 8
+def get_penn_fudan_databunch(test=False, overfit=False):
+    img_sz = 224
+    batch_sz = 32
     num_workers = 4
 
     if test:
-        img_sz = 256
-        batch_sz = 1
+        img_sz = 224
+        batch_sz = 4
         num_workers = 0
+    if overfit:
+        img_sz = 224
+        batch_sz = 4
 
     data_uri = 's3://raster-vision-lf-dev/penn-fudan/penn-fudan.zip'
     data_dir = '/opt/data/penn-fudan/data'
@@ -104,18 +134,22 @@ def get_penn_fudan_databunch(test):
         classes = ['background'] + classes
 
     src = ObjectItemList.from_folder(img_path)
-    if test:
-        src = src.split_by_idxs(np.arange(0, 2), np.arange(2, 4))
+    if overfit:
+        # Don't use any validation set so training will run faster.
+        src = src.split_by_idxs(np.arange(4, 8), [])
+    elif test:
+        src = src.split_by_idxs(
+            np.arange(0, batch_sz), np.arange(batch_sz, batch_sz * 2))
     else:
         src = src.split_by_files(sorted_images[0:30])
+
     src = src.label_from_func(get_y_func, classes=classes)
     train_transforms = [flip_affine(p=0.5)]
     val_transforms = []
     src = src.transform(
         tfms=[train_transforms, val_transforms], size=img_sz, tfm_y=True,
-        resize_method=ResizeMethod.SQUISH, padding_mode='zeros')
+        resize_method=ResizeMethod.SQUISH)
     data = src.databunch(path=data_dir, bs=batch_sz, collate_fn=bb_pad_collate,
                          num_workers=num_workers)
-    data = data.normalize(imagenet_stats)
     data.classes = classes
     return data
