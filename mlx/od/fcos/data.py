@@ -79,15 +79,14 @@ def get_pascal_databunch(test=False, overfit=False):
         classes = [x['name'] for x in classes]
         classes = ['background'] + classes
 
-        src = ObjectItemList.from_folder(img_path)
+        src = ObjectItemList.from_folder(img_path, presort=True)
         if overfit:
             # Don't use any validation set so training will run faster.
             src = src.split_by_idxs(np.arange(4, 8), [])
         elif test:
-            src = src.split_by_idxs(
-                np.arange(0, batch_sz), np.arange(batch_sz, batch_sz * 2))
+            src = src.split_by_idxs(np.arange(4, 8), np.arange(4, 8))
         else:
-            src = src.split_by_files(val_images[0:250])
+            src = src.split_by_idxs(np.arange(250, len(images)), np.arange(0, 250))
         src = src.label_from_func(get_y_func, classes=classes)
         train_transforms, val_transforms = [], []
         if not overfit:
@@ -125,7 +124,6 @@ def get_penn_fudan_databunch(test=False, overfit=False):
     images, lbl_bbox = get_annotations(coco_path)
     img2bbox = dict(zip(images, lbl_bbox))
     get_y_func = lambda o: img2bbox[o.name]
-    sorted_images = sorted(images)
 
     with open(coco_path) as f:
         d = json.load(f)
@@ -133,7 +131,7 @@ def get_penn_fudan_databunch(test=False, overfit=False):
         classes = [x['name'] for x in classes]
         classes = ['background'] + classes
 
-    src = ObjectItemList.from_folder(img_path)
+    src = ObjectItemList.from_folder(img_path, presort=True)
     if overfit:
         # Don't use any validation set so training will run faster.
         src = src.split_by_idxs(np.arange(4, 8), [])
@@ -141,7 +139,8 @@ def get_penn_fudan_databunch(test=False, overfit=False):
         src = src.split_by_idxs(
             np.arange(0, batch_sz), np.arange(batch_sz, batch_sz * 2))
     else:
-        src = src.split_by_files(sorted_images[0:30])
+        src = src.split_by_idxs(
+            np.arange(30, len(images)), np.arange(0, 30))
 
     src = src.label_from_func(get_y_func, classes=classes)
     train_transforms = [flip_affine(p=0.5)]
