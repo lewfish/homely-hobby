@@ -52,7 +52,7 @@ def run_on_batch(dataset_name, test, overfit, debug, profile):
         cmd_list.append('--test')
     if overfit:
         cmd_list.append('--overfit')
-    submit_job(job_name, job_def, job_queue, cmd_list)
+    submit_job(job_name, job_def, job_queue, cmd_list, attempts=5)
     exit()
 
 # Modified from fastai to handle model which only computes loss when targets
