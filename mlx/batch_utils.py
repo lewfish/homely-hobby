@@ -1,8 +1,6 @@
-def submit_job(job_name, job_def, job_queue, cmd_list):
+def submit_job(job_name, job_def, job_queue, cmd_list, attempts=1):
     import boto3
     client = boto3.client('batch')
-
-    attempts = 1
 
     kwargs = {
         'jobName': job_name,

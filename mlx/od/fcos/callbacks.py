@@ -1,6 +1,6 @@
 import shutil
 from typing import Any
-from os.path import join
+from os.path import join, isfile
 
 import torch
 from fastai.callbacks import (
@@ -20,21 +20,41 @@ class SyncCallback(Callback):
         if (kwargs['epoch'] + 1) % self.sync_interval == 0:
             sync_to_dir(self.from_dir, self.to_uri, delete=True)
 
-class ExportModelCallback(TrackerCallback):
-    """Export the model when monitored quantity is best."""
-    def __init__(self, learn:Learner, model_path:str, monitor:str='valid_loss', mode:str='auto'):
-        self.model_path = model_path
+class MySaveModelCallback(TrackerCallback):
+    "A `TrackerCallback` that saves the model when monitored quantity is best."
+    def __init__(self, learn:Learner, model_path, monitor:str='valid_loss', mode:str='auto', every:str='improvement'):
         super().__init__(learn, monitor=monitor, mode=mode)
+        self.every, self.model_path = every, model_path
+        if self.every not in ['improvement', 'epoch']:
+            warn(f'SaveModel every {self.every} is invalid, falling back to "improvement".')
+            self.every = 'improvement'
+
+        self.device = next(learn.model.parameters()).device
+
+    def jump_to_epoch(self, epoch:int)->None:
+        if self.every=="epoch" and isfile(self.model_path):
+            self.learn.model.load_state_dict(torch.load(
+                self.model_path, map_location=self.device))
+            print(f"Loaded {self.model_path}")
 
     def on_epoch_end(self, epoch:int, **kwargs:Any)->None:
-        current = self.get_monitor_value()
-
-        if (epoch == 0 or
-                (current is not None and self.operator(current, self.best))):
-            print(f'Better model found at epoch {epoch} with {self.monitor} value: {current}.')
-            self.best = current
-            print(f'Saving to {self.model_path}')
+        "Compare the value monitored to its best score and maybe save the model."
+        if self.every=="epoch":
             torch.save(self.learn.model.state_dict(), self.model_path)
+        else: #every="improvement"
+            current = self.get_monitor_value()
+            if current is not None and self.operator(current, self.best):
+                print(f'Better model found at epoch {epoch} with {self.monitor} value: {current}.')
+                self.best = current
+                torch.save(self.learn.model.state_dict(), self.model_path)
+
+    def on_train_end(self, **kwargs):
+        "Load the best model."
+        if self.every=="improvement" and isfile(self.model_path):
+            print(f"Loaded {self.model_path}")
+            self.learn.model.load_state_dict(torch.load(
+                self.model_path, map_location=self.device))
+
 
 class MyCSVLogger(CSVLogger):
     """Logs metrics to a CSV file after each epoch.

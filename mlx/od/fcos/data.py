@@ -1,4 +1,4 @@
-from os.path import join, isdir, dirname
+from os.path import join, isdir, dirname, basename
 import json
 import tempfile
 
@@ -16,8 +16,8 @@ datasets = [pascal2007, penn_fudan]
 
 output_config = {
     pascal2007: {
-        'output_uri': 's3://raster-vision-lf-dev/pascal2007/output-iouloss2',
-        'output_dir': '/opt/data/pascal2007/output/'
+        'output_uri': 's3://raster-vision-lf-dev/pascal2007/output-1-100-448',
+        'output_dir': '/opt/data/pascal2007/output-test/'
     },
     penn_fudan: {
         'output_uri': 's3://raster-vision-lf-dev/penn-fudan/output-overfit',
@@ -47,8 +47,8 @@ def get_databunch(dataset, test=False, overfit=False):
         return get_penn_fudan_databunch(test, overfit)
 
 def get_pascal_databunch(test=False, overfit=False):
-    img_sz = 224
-    batch_sz = 32
+    img_sz = 448
+    batch_sz = 8
     num_workers = 4
 
     if test:
@@ -63,13 +63,14 @@ def get_pascal_databunch(test=False, overfit=False):
     untar_data(URLs.PASCAL_2007, dest=data_dir)
     data_dir = join(data_dir, 'pascal_2007')
 
-    img_path = join(data_dir, 'train')
     trn_path = join(data_dir, 'train.json')
     trn_images, trn_lbl_bbox = get_annotations(trn_path)
     val_path = join(data_dir, 'valid.json')
     val_images, val_lbl_bbox = get_annotations(val_path)
+    test_path = join(data_dir, 'test.json')
+    test_images, test_lbl_bbox = get_annotations(test_path)
 
-    images, lbl_bbox = trn_images+val_images, trn_lbl_bbox+val_lbl_bbox
+    images, lbl_bbox = trn_images+val_images+test_images, trn_lbl_bbox+val_lbl_bbox+test_lbl_bbox
     img2bbox = dict(zip(images, lbl_bbox))
     get_y_func = lambda o: img2bbox[o.name]
 
@@ -79,15 +80,20 @@ def get_pascal_databunch(test=False, overfit=False):
         classes = [x['name'] for x in classes]
         classes = ['background'] + classes
 
-        src = ObjectItemList.from_folder(img_path)
+    def get_databunch(full=True):
+        src = ObjectItemList.from_folder(data_dir, presort=True)
         if overfit:
             # Don't use any validation set so training will run faster.
-            src = src.split_by_idxs(np.arange(4, 8), [])
+            src = src.split_by_idxs(np.arange(0, 4), [])
         elif test:
-            src = src.split_by_idxs(
-                np.arange(0, batch_sz), np.arange(batch_sz, batch_sz * 2))
+            src = src.split_by_idxs(np.arange(0, 4), np.arange(0, 4))
         else:
-            src = src.split_by_files(val_images[0:250])
+            def file_filter(path):
+                fn = basename(str(path))
+                return fn in trn_images or fn in val_images or fn in test_images[0:500]
+            if not full:
+                src = src.filter_by_func(file_filter)
+            src = src.split_by_files(test_images)
         src = src.label_from_func(get_y_func, classes=classes)
         train_transforms, val_transforms = [], []
         if not overfit:
@@ -97,8 +103,10 @@ def get_pascal_databunch(test=False, overfit=False):
             resize_method=ResizeMethod.SQUISH)
         data = src.databunch(path=data_dir, bs=batch_sz, collate_fn=bb_pad_collate,
                              num_workers=num_workers)
-    data.classes = classes
-    return data
+        data.classes = classes
+        return data
+
+    return get_databunch(full=False), get_databunch(full=True)
 
 def get_penn_fudan_databunch(test=False, overfit=False):
     img_sz = 224
@@ -125,7 +133,6 @@ def get_penn_fudan_databunch(test=False, overfit=False):
     images, lbl_bbox = get_annotations(coco_path)
     img2bbox = dict(zip(images, lbl_bbox))
     get_y_func = lambda o: img2bbox[o.name]
-    sorted_images = sorted(images)
 
     with open(coco_path) as f:
         d = json.load(f)
@@ -133,7 +140,7 @@ def get_penn_fudan_databunch(test=False, overfit=False):
         classes = [x['name'] for x in classes]
         classes = ['background'] + classes
 
-    src = ObjectItemList.from_folder(img_path)
+    src = ObjectItemList.from_folder(img_path, presort=True)
     if overfit:
         # Don't use any validation set so training will run faster.
         src = src.split_by_idxs(np.arange(4, 8), [])
@@ -141,7 +148,8 @@ def get_penn_fudan_databunch(test=False, overfit=False):
         src = src.split_by_idxs(
             np.arange(0, batch_sz), np.arange(batch_sz, batch_sz * 2))
     else:
-        src = src.split_by_files(sorted_images[0:30])
+        src = src.split_by_idxs(
+            np.arange(30, len(images)), np.arange(0, 30))
 
     src = src.label_from_func(get_y_func, classes=classes)
     train_transforms = [flip_affine(p=0.5)]
@@ -152,4 +160,4 @@ def get_penn_fudan_databunch(test=False, overfit=False):
     data = src.databunch(path=data_dir, bs=batch_sz, collate_fn=bb_pad_collate,
                          num_workers=num_workers)
     data.classes = classes
-    return data
+    return data, data

@@ -21,7 +21,7 @@ class TestFocalLoss(unittest.TestCase):
         exp_loss = loss_arr.reshape(-1).sum()
 
         loss = focal_loss(output, target, gamma, alpha)
-        self.assertEqual(exp_loss, loss)
+        self.assertAlmostEqual(exp_loss, loss)
 
 if __name__ == '__main__':
     unittest.main()

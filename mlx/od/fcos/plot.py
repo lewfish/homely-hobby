@@ -114,7 +114,7 @@ def plot_reg_center_arr(reg_arr, center_probs, stride):
         'reg_arr and center_arr for stride={}'.format(stride), size=20)
     return fig
 
-def plot_preds(dataset, model, classes, output_dir, max_plots=50, score_thresh=0.25):
+def plot_preds(dataset, model, classes, output_dir, max_plots=25, score_thresh=0.25):
     preds_dir = join(output_dir, 'preds')
     zip_path = join(output_dir, 'preds.zip')
     make_dir(preds_dir, force_empty=True)
