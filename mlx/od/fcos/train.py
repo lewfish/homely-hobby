@@ -118,7 +118,7 @@ def main(dataset, test, overfit, s3_data, batch, debug, profile):
     backbone_arch = 'resnet18'
     levels = [1]
     lr = 1e-4
-    num_epochs = 30
+    num_epochs = 100
     sync_interval = 2
 
     if overfit:
@@ -130,9 +130,9 @@ def main(dataset, test, overfit, s3_data, batch, debug, profile):
         num_epochs = 1
 
     # Setup data
-    databunch = get_databunch(dataset, test, overfit)
+    databunch, full_databunch = get_databunch(dataset, test, overfit)
     output_dir, output_uri = setup_output(dataset, s3_data)
-    print(databunch)
+    print(full_databunch)
     plot_data(databunch, output_dir)
 
     # Setup model
@@ -167,11 +167,12 @@ def main(dataset, test, overfit, s3_data, batch, debug, profile):
                 learn, best_model_path, monitor='coco_metric', every='improvement'),
             MySaveModelCallback(learn, last_model_path, every='epoch'),
             TrackEpochCallback(learn),
-            tb_logger
         ]
         callbacks.extend(extra_callbacks)
         learn.fit_one_cycle(num_epochs, lr, callbacks=callbacks)
         plot_dataset = databunch.valid_ds
+        print('Validating on full validation set...')
+        learn.validate(full_databunch.valid_dl, metrics=metrics)
 
     print('Plotting predictions...')
     plot_preds(plot_dataset, learn.model, databunch.classes, output_dir)
