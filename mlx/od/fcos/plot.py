@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from fastai.vision import ImageBBox
+from fastai.vision import ImageBBox, normalize, imagenet_stats
 import torch
 import matplotlib.gridspec as gridspec
 
@@ -37,6 +37,8 @@ def plot_data(data, output_dir, max_per_split=25):
 def get_pred(img, model, score_thresh):
     device = list(model.parameters())[0].device
     x = img.data.unsqueeze(0).to(device=device)
+    mean, std = imagenet_stats
+    x = normalize(x, torch.tensor(mean, device=device), torch.tensor(std, device=device))
     out, head_out = model(x, get_head_out=True)
     out = out[0]
     # Filter boxes whose score is high enough
