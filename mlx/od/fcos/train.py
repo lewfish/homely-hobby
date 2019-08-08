@@ -29,6 +29,7 @@ from mlx.od.fcos.callbacks import (
     MyCSVLogger, SyncCallback, TensorboardLogger,
     SubLossMetric, MySaveModelCallback)
 from mlx.od.fcos.data import get_databunch, setup_output
+from mlx.od.fcos.utils import to_box_pixel
 from mlx.batch_utils import submit_job
 from mlx.filesystem.utils import (
     make_dir, sync_to_dir, zipdir, unzip, download_if_needed)
@@ -59,6 +60,7 @@ def run_on_batch(dataset_name, test, overfit, debug, profile):
 # are passed in, and only computes output otherwise. This should run faster
 # thanks to not having to run the decoder and NMS during training, and not
 # computing the loss for the validation which is not a great metric anyway.
+# This also converts the input format.
 def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None,
                opt:OptOptimizer=None,
                cb_handler:Optional[CallbackHandler]=None)->Tuple[Union[Tensor,int,float,str]]:
@@ -72,12 +74,7 @@ def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None
     for i in range(batch_sz):
         boxes = yb[0][i]
         labels = yb[1][i]
-        # convert from (ymin, xmin, ymax, xmax) in range [-1,1] to
-        # range [0, h) or [0, w)
-        h, w = images[i].shape[1:]
-        boxes = ((boxes + 1.0) / 2.0) * torch.tensor([[h, w, h, w]]).to(
-            device=device, dtype=torch.float)
-
+        to_box_pixel(boxes, *images[0].shape[1:3])
         targets.append({
             'boxes': boxes,
             'labels': labels

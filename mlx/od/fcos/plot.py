@@ -7,27 +7,58 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from fastai.vision import ImageBBox, normalize, imagenet_stats
+import matplotlib.patches as patches
+from fastai.vision import ImageBBox, normalize, denormalize, imagenet_stats
 import torch
 import matplotlib.gridspec as gridspec
 
 from mlx.filesystem.utils import make_dir, zipdir
 from mlx.od.fcos.encoder import encode_targets
+from mlx.od.fcos.utils import to_box_pixel
 
 def plot_data(data, output_dir, max_per_split=25):
+    """Plot images and ground truth coming out the dataloader."""
     def _plot_data(split):
         debug_chips_dir = join(output_dir, '{}-debug-chips'.format(split))
         zip_path = join(output_dir, '{}-debug-chips.zip'.format(split))
         make_dir(debug_chips_dir, force_empty=True)
 
-        ds = data.train_ds if split == 'train' else data.valid_ds
-        for i, (x, y) in enumerate(ds):
-            if i == max_per_split:
-                break
-            x.show(y=y)
-            plt.savefig(join(debug_chips_dir, '{}.png'.format(i)),
-                        figsize=(6, 6))
-            plt.close()
+        dl = data.train_dl if split == 'train' else data.valid_dl
+
+        img_ind = 0
+        for batch in dl:
+            N = batch[0].shape[0]
+            for i in range(N):
+                if img_ind == max_per_split:
+                    break
+
+                img = batch[0][i].cpu()
+                boxes = batch[1][0][i].cpu()
+                labels = batch[1][1][i].cpu()
+
+                boxes = to_box_pixel(boxes, img.shape[1], img.shape[2])
+                mean, std = imagenet_stats
+                img = denormalize(img, torch.tensor(mean), torch.tensor(std))
+
+                fig,ax = plt.subplots(1)
+                ax.imshow(img.permute(1, 2, 0))
+                for box, label in zip(boxes, labels):
+                    if label != 0.0:
+                        rect = patches.Rectangle(
+                            (box[1], box[0]), box[3]-box[1], box[2]-box[0],
+                            linewidth=1, edgecolor='r', facecolor='none')
+                        ax.add_patch(rect)
+                        label_name = data.classes[label.item()]
+                        txt = ax.text(box[1] + 2, box[0] + 7, label_name, fontsize=10)
+                        import matplotlib.patheffects as PathEffects
+                        txt.set_path_effects([PathEffects.withStroke(linewidth=1, foreground='w')])
+
+                plt.axis('off')
+                plt.savefig(join(debug_chips_dir, '{}.png'.format(img_ind)),
+                            figsize=(6, 6), dpi=200)
+                plt.close()
+
+                img_ind += 1
         zipdir(debug_chips_dir, zip_path)
         shutil.rmtree(debug_chips_dir)
 

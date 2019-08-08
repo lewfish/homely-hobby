@@ -8,6 +8,7 @@ from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
 from mlx.filesystem.utils import json_to_file
+from mlx.od.fcos.utils import to_box_pixel
 
 def get_coco_gt(targets, num_labels):
     images = []
@@ -118,9 +119,7 @@ class CocoMetric(Callback):
         for batch_boxes, batch_labels in self.targets:
             for boxes, labels in zip(batch_boxes, batch_labels):
                 non_pad_inds = labels != 0
-                boxes = ((boxes + 1.0) / 2.0)
-                boxes = boxes * torch.tensor([[self.h, self.w, self.h, self.w]]).to(
-                    device=boxes.device, dtype=torch.float)
+                boxes = to_box_pixel(boxes, self.h, self.w)
                 my_targets.append({
                     'boxes': boxes[non_pad_inds, :],
                     'labels': labels[non_pad_inds]})
