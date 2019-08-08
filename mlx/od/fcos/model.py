@@ -218,32 +218,50 @@ class FCOS(nn.Module):
                 'center_loss': <tensor[1]>
             }
         """
-        device = list(out.values())[0]['reg_arr'].device
-        label_loss = torch.tensor(0., device=device)
-        reg_loss = torch.tensor(0., device=device)
-        center_loss = torch.tensor(0., device=device)
         iou_loss = IOULoss()
+
+        targets_label_arrs = []
+        out_label_arrs = []
+        targets_reg_arrs = []
+        out_reg_arrs = []
+        targets_center_arrs = []
+        out_center_arrs = []
 
         for i, s in enumerate(out.keys()):
             num_labels = targets[s]['label_arr'].shape[0]
             targets_label_arr = targets[s]['label_arr'].reshape(num_labels, -1).permute(1, 0)
             out_label_arr = out[s]['label_arr'].reshape(num_labels, -1).permute(1, 0)
-            pos_indicator = targets_label_arr.sum(1) != 0
-            npos = pos_indicator.sum().item() + 1
 
+            pos_indicator = targets_label_arr.sum(1) != 0
             targets_reg_arr = targets[s]['reg_arr'].reshape(4, -1).permute(1, 0)[pos_indicator, :]
             targets_center_arr = targets[s]['center_arr'].reshape(1, -1).permute(1, 0)[pos_indicator, :]
             out_reg_arr = out[s]['reg_arr'].reshape(4, -1).permute(1, 0)[pos_indicator, :]
             out_center_arr = out[s]['center_arr'].reshape(1, -1).permute(1, 0)[pos_indicator, :]
 
-            label_loss += focal_loss(out_label_arr, targets_label_arr) / npos
-            if npos > 1:
-                reg_loss += iou_loss(out_reg_arr, targets_reg_arr, targets_center_arr)
-                center_loss += nn.functional.binary_cross_entropy_with_logits(
-                    out_center_arr, targets_center_arr, reduction='mean')
+            targets_label_arrs.append(targets_label_arr)
+            out_label_arrs.append(out_label_arr)
+            targets_reg_arrs.append(targets_reg_arr)
+            out_reg_arrs.append(out_reg_arr)
+            targets_center_arrs.append(targets_center_arr)
+            out_center_arrs.append(out_center_arr)
 
-        reg_scale = 0.01
-        loss_dict = {'label_loss': label_loss, 'reg_loss': reg_loss * reg_scale, 'center_loss': center_loss}
+        targets_label_arr = torch.cat(targets_label_arrs)
+        out_label_arr = torch.cat(out_label_arrs)
+        targets_reg_arr = torch.cat(targets_reg_arrs)
+        out_reg_arr = torch.cat(out_reg_arrs)
+        targets_center_arr = torch.cat(targets_center_arrs)
+        out_center_arr = torch.cat(out_center_arrs)
+
+        npos = targets_reg_arr.shape[0] + 1
+        label_loss = focal_loss(out_label_arr, targets_label_arr) / npos
+        reg_loss = torch.tensor(0.0, device=label_loss.device)
+        center_loss = torch.tensor(0.0, device=label_loss.device)
+        if npos > 1:
+            reg_loss = iou_loss(out_reg_arr, targets_reg_arr, targets_center_arr)
+            center_loss = nn.functional.binary_cross_entropy_with_logits(
+                out_center_arr, targets_center_arr, reduction='mean')
+
+        loss_dict = {'label_loss': label_loss, 'reg_loss': reg_loss, 'center_loss': center_loss}
         return loss_dict
 
     def forward(self, input, targets=None, get_head_out=False):
