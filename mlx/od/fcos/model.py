@@ -24,7 +24,7 @@ class FPN(nn.Module):
 
         # Strides of cells in each level of the pyramid. Should be in
         # descending order.
-        self.strides = [32, 16, 8, 4]
+        self.strides = [64, 32, 16, 8, 4]
         self.levels = levels
         if levels is not None:
             self.strides = [self.strides[l] for l in levels]
@@ -52,12 +52,26 @@ class FPN(nn.Module):
         self.backbone(torch.rand((1, 3, 256, 256)))
         self.cross_conv1 = nn.Conv2d(
             self.backbone_out['layer1'].shape[1], out_channels, 1)
+        self.out_conv1 = nn.Conv2d(
+            out_channels, out_channels, 3, 1, 1)
+
         self.cross_conv2 = nn.Conv2d(
             self.backbone_out['layer2'].shape[1], out_channels, 1)
+        self.out_conv2 = nn.Conv2d(
+            out_channels, out_channels, 3, 1, 1)
+
         self.cross_conv3 = nn.Conv2d(
             self.backbone_out['layer3'].shape[1], out_channels, 1)
+        self.out_conv3 = nn.Conv2d(
+            out_channels, out_channels, 3, 1, 1)
+
         self.cross_conv4 = nn.Conv2d(
             self.backbone_out['layer4'].shape[1], out_channels, 1)
+        self.out_conv4 = nn.Conv2d(
+            out_channels, out_channels, 3, 1, 1)
+
+        self.up_conv5 = nn.Conv2d(
+            out_channels, out_channels, 3, 2, 1)
 
     def forward(self, input):
         """Computes output of FPN.
@@ -73,20 +87,23 @@ class FPN(nn.Module):
         """
         self.backbone_out = {}
         self.backbone(input)
+
         # c* is cross output, d* is downsampling output
         c4 = self.cross_conv4(self.backbone_out['layer4'])
-        d4 = c4
+        d4 = self.out_conv4(c4)
+
+        u5 = self.up_conv5(d4)
 
         c3 = self.cross_conv3(self.backbone_out['layer3'])
-        d3 = c3 + nn.functional.interpolate(d4, c3.shape[2:])
+        d3 = self.out_conv3(c3 + nn.functional.interpolate(d4, c3.shape[2:]))
 
         c2 = self.cross_conv2(self.backbone_out['layer2'])
-        d2 = c2 + nn.functional.interpolate(d3, c2.shape[2:])
+        d2 = self.out_conv2(c2 + nn.functional.interpolate(d3, c2.shape[2:]))
 
         c1 = self.cross_conv1(self.backbone_out['layer1'])
-        d1 = c1 + nn.functional.interpolate(d2, c1.shape[2:])
+        d1 = self.out_conv1(c1 + nn.functional.interpolate(d2, c1.shape[2:]))
 
-        out = [d4, d3, d2, d1]
+        out = [u5, d4, d3, d2, d1]
         if self.levels is not None:
             out = [out[l] for l in self.levels]
         return out
@@ -260,7 +277,7 @@ class FCOS(nn.Module):
         h, w = input.shape[2:]
         strides = self.fpn.strides
         hws = [level_out.shape[2:] for level_out in fpn_out]
-        max_box_sides = [256, 128, 64, 32]
+        max_box_sides = [256, 128, 64, 32, 16]
         if self.levels is not None:
             max_box_sides = [max_box_sides[l] for l in self.levels]
         iou_thresh = 0.5
