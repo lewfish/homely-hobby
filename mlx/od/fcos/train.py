@@ -116,9 +116,9 @@ def main(dataset, test, overfit, s3_data, batch, debug, profile):
 
     # Setup options
     backbone_arch = 'resnet18'
-    levels = [1]
+    levels = [2]
     lr = 1e-4
-    num_epochs = 100
+    num_epochs = 25
     sync_interval = 2
 
     if overfit:
@@ -154,7 +154,7 @@ def main(dataset, test, overfit, s3_data, batch, debug, profile):
         callbacks.append(SyncCallback(output_dir, output_uri, sync_interval))
 
     if overfit:
-        learn.fit(num_epochs, lr, callbacks=callbacks)
+        learn.fit_one_cycle(num_epochs, lr, callbacks=callbacks)
         learn.validate(databunch.train_dl, metrics=metrics)
         plot_dataset = databunch.train_ds
         torch.save(learn.model.state_dict(), last_model_path)
@@ -167,6 +167,7 @@ def main(dataset, test, overfit, s3_data, batch, debug, profile):
                 learn, best_model_path, monitor='coco_metric', every='improvement'),
             MySaveModelCallback(learn, last_model_path, every='epoch'),
             TrackEpochCallback(learn),
+            tb_logger
         ]
         callbacks.extend(extra_callbacks)
         learn.fit_one_cycle(num_epochs, lr, callbacks=callbacks)

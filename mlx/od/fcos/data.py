@@ -16,7 +16,7 @@ datasets = [pascal2007, penn_fudan]
 
 output_config = {
     pascal2007: {
-        'output_uri': 's3://raster-vision-lf-dev/pascal2007/output-1-100-448',
+        'output_uri': 's3://raster-vision-lf-dev/pascal2007/output-2-25-448b',
         'output_dir': '/opt/data/pascal2007/output-test/'
     },
     penn_fudan: {
