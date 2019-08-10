@@ -5,7 +5,7 @@ import tempfile
 import numpy as np
 from fastai.vision import (
    URLs, get_annotations, ObjectItemList, untar_data, imagenet_stats,
-   flip_affine, bb_pad_collate, ResizeMethod)
+   flip_affine, bb_pad_collate, ResizeMethod, imagenet_stats)
 
 from mlx.filesystem.utils import (
     make_dir, sync_to_dir, sync_from_dir, zipdir, unzip, download_if_needed)
@@ -103,6 +103,7 @@ def get_pascal_databunch(test=False, overfit=False):
             resize_method=ResizeMethod.SQUISH)
         data = src.databunch(path=data_dir, bs=batch_sz, collate_fn=bb_pad_collate,
                              num_workers=num_workers)
+        data.normalize(imagenet_stats)
         data.classes = classes
         return data
 
