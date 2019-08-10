@@ -232,7 +232,7 @@ class FCOS(nn.Module):
             targets_label_arr = targets[s]['label_arr'].reshape(num_labels, -1).permute(1, 0)
             out_label_arr = out[s]['label_arr'].reshape(num_labels, -1).permute(1, 0)
 
-            pos_indicator = targets_label_arr.sum(1) != 0
+            pos_indicator = targets_label_arr.sum(1) > 0.0
             targets_reg_arr = targets[s]['reg_arr'].reshape(4, -1).permute(1, 0)[pos_indicator, :]
             targets_center_arr = targets[s]['center_arr'].reshape(1, -1).permute(1, 0)[pos_indicator, :]
             out_reg_arr = out[s]['reg_arr'].reshape(4, -1).permute(1, 0)[pos_indicator, :]

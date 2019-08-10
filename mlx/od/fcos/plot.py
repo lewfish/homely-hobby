@@ -62,8 +62,14 @@ def plot_data(data, output_dir, max_per_split=25):
         zipdir(debug_chips_dir, zip_path)
         shutil.rmtree(debug_chips_dir)
 
-    _plot_data('train')
-    _plot_data('val')
+    if len(data.train_ds):
+        _plot_data('train')
+
+    try:
+        data.valid_ds[0]
+        _plot_data('val')
+    except:
+        pass
 
 def get_pred(img, model, score_thresh):
     device = list(model.parameters())[0].device

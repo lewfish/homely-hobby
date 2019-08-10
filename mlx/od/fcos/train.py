@@ -51,7 +51,7 @@ def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None
     for i in range(batch_sz):
         boxes = yb[0][i]
         labels = yb[1][i]
-        to_box_pixel(boxes, *images[0].shape[1:3])
+        boxes = to_box_pixel(boxes, *images[0].shape[1:3])
         targets.append({
             'boxes': boxes,
             'labels': labels
