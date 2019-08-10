@@ -35,14 +35,7 @@ def build_databunch(cfg, tmp_dir):
 
     img_sz = cfg.data.img_sz
     batch_sz = cfg.solver.batch_sz
-    num_workers = 4
-
-    if cfg.test_mode or cfg.overfit_mode:
-        img_sz = cfg.data.img_sz // 2
-        batch_sz = 4
-
-    if cfg.test_mode:
-        num_workers = 0
+    num_workers = cfg.data.num_workers
 
     data_uri = cfg.data.data_uri
     if cfg.data.dataset == pascal2007:

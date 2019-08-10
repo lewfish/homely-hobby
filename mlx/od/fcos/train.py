@@ -86,14 +86,6 @@ def train(config_path, opts):
     cfg = load_config(config_path, opts)
     print(cfg)
 
-    # Setup options
-    sync_interval = cfg.solver.sync_interval
-    if cfg.overfit_mode:
-        num_epochs = cfg.overfit_num_epochs
-        sync_interval = cfg.overfit_sync_interval
-    if cfg.test_mode:
-        num_epochs = cfg.test_num_epochs
-
     # Setup data
     databunch, full_databunch = build_databunch(cfg, tmp_dir)
     output_dir = setup_output_dir(cfg, tmp_dir)
@@ -117,10 +109,10 @@ def train(config_path, opts):
 
     if cfg.output_uri.startswith('s3://'):
         callbacks.append(
-            SyncCallback(output_dir, cfg.output_uri, sync_interval))
+            SyncCallback(output_dir, cfg.output_uri, cfg.solver.sync_interval))
 
     if cfg.overfit_mode:
-        learn.fit_one_cycle(num_epochs, cfg.solver.lr, callbacks=callbacks)
+        learn.fit_one_cycle(cfg.solver.num_epochs, cfg.solver.lr, callbacks=callbacks)
         learn.validate(databunch.train_dl, metrics=metrics)
         plot_dataset = databunch.train_ds
         torch.save(learn.model.state_dict(), last_model_path)
@@ -139,7 +131,7 @@ def train(config_path, opts):
             tb_logger
         ]
         callbacks.extend(extra_callbacks)
-        learn.fit_one_cycle(num_epochs, cfg.solver.lr, callbacks=callbacks)
+        learn.fit_one_cycle(cfg.solver.num_epochs, cfg.solver.lr, callbacks=callbacks)
         plot_dataset = databunch.valid_ds
         print('Validating on full validation set...')
         learn.validate(full_databunch.valid_dl, metrics=metrics)
