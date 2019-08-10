@@ -1,0 +1,14 @@
+model:
+  backbone_arch: "resnet18"
+  levels: [2]
+solver:
+  lr: 1e-4
+  num_epochs: 25
+  sync_interval: 2
+  batch_sz: 16
+data:
+  dataset: "penn-fudan"
+  data_uri: "data/"
+  img_sz: 448
+output_uri: "output/"
+base_uri: "s3://raster-vision-lf-dev/penn-fudan/"

@@ -38,6 +38,7 @@ RUN pip install line_profiler==2.1.*
 RUN conda install -y -c pytorch torchvision=0.3
 RUN pip install tensorboard==1.14.*
 RUN pip install tensorboardX==1.8.*
+RUN pip install yacs==0.1.*
 
 ENV LANG C.UTF-8
 ENV LC_ALL C.UTF-8
