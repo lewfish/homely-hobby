@@ -79,12 +79,10 @@ def get_pred(img, model, score_thresh):
     out, head_out = model(x, get_head_out=True)
     out = out[0]
     # Filter boxes whose score is high enough
-    boxes = out['boxes'].cpu()
-    labels = out['labels'].cpu()
-    scores = out['scores'].cpu()
+    boxes, labels, scores = out[0].cpu(), out[1].cpu(), out[2].cpu()
     keep_inds = scores > score_thresh
     boxes, labels, scores = boxes[keep_inds, :], labels[keep_inds], scores[keep_inds]
-    out = {'boxes': boxes, 'labels': labels, 'scores': scores}
+    out = (boxes, labels, scores)
     return out, head_out
 
 def plot_image_preds(x, y, out, classes):
@@ -106,8 +104,9 @@ def plot_image_preds(x, y, out, classes):
 
     ax = fig.add_subplot(grid[2])
     ax.set_title('predictions')
-    if out['boxes'].shape[0] > 0:
-        z = ImageBBox.create(h, w, out['boxes'], out['labels'],
+    boxes, labels, scores = out
+    if boxes.shape[0] > 0:
+        z = ImageBBox.create(h, w, boxes, labels,
                              classes=classes, scale=True)
         x.show(y=z, ax=ax)
     else:
@@ -173,9 +172,12 @@ def plot_preds(dataset, model, classes, output_dir, max_plots=25, score_thresh=0
         plt.close(fig)
 
         # Plot raw output of network at each level.
-        for stride, level_out in head_out.items():
+        for level, level_out in enumerate(head_out):
+            stride = model.fpn.strides[level]
+            reg_arr, label_arr, center_arr = level_out
+
             # Plot label_arr
-            label_arr = level_out['label_arr'][0].detach().cpu()
+            label_arr = label_arr[0].detach().cpu()
             label_probs = torch.sigmoid(label_arr)
             fig = plot_label_arr(label_probs, classes, stride)
             plt.savefig(
@@ -184,8 +186,8 @@ def plot_preds(dataset, model, classes, output_dir, max_plots=25, score_thresh=0
             plt.close(fig)
 
             # Plot top, left, bottom, right from reg_arr and center_arr.
-            reg_arr = level_out['reg_arr'][0].detach().cpu()
-            center_arr = level_out['center_arr'][0][0].detach().cpu()
+            reg_arr = reg_arr[0].detach().cpu()
+            center_arr = center_arr[0][0].detach().cpu()
             center_probs = torch.sigmoid(center_arr)
             fig = plot_reg_center_arr(reg_arr, center_probs, stride)
             plt.savefig(
@@ -202,9 +204,12 @@ def plot_preds(dataset, model, classes, output_dir, max_plots=25, score_thresh=0
         targets = encode_targets(boxes, labels, model.pyramid_shape, model.num_labels)
 
         # Plot encoding of ground truth at each level.
-        for stride, level_targets in targets.items():
+        for level, level_targets in enumerate(targets):
+            stride = model.fpn.strides[level]
+            reg_arr, label_arr, center_arr = level_targets
+
             # Plot label_arr
-            label_probs = level_targets['label_arr'].detach().cpu()
+            label_probs = label_arr.detach().cpu()
             fig = plot_label_arr(label_probs, classes, stride)
             plt.savefig(
                 join(preds_dir, '{}-{}-label-arr-gt.png'.format(img_id, stride)),
@@ -212,8 +217,8 @@ def plot_preds(dataset, model, classes, output_dir, max_plots=25, score_thresh=0
             plt.close(fig)
 
             # Plot top, left, bottom, right from reg_arr and center_arr.
-            reg_arr = level_targets['reg_arr'].detach().cpu()
-            center_arr = level_targets['center_arr'][0].detach().cpu()
+            reg_arr = reg_arr.detach().cpu()
+            center_arr = center_arr[0].detach().cpu()
             center_probs = center_arr
             fig = plot_reg_center_arr(reg_arr, center_probs, stride)
             plt.savefig(

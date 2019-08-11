@@ -67,7 +67,7 @@ def encode_box(reg_arr, label_arr, center_arr, stride, box, label):
         (torch.min(t, b) / torch.max(t, b)))
     center_arr[0, nw_ij[0]:se_ij[0]+1, nw_ij[1]:se_ij[1]+1] = box_center_arr
 
-def get_stride(box_size, pyramid_shape):
+def get_level(box_size, pyramid_shape):
     """Get level of pyramid to use for a box.
 
     Args:
@@ -78,10 +78,10 @@ def get_stride(box_size, pyramid_shape):
     Returns:
         stride of level in pyramid that handles boxes of box_size
     """
-    for stride, max_box_size, _, _ in reversed(pyramid_shape):
+    for level, (stride, max_box_size, _, _) in enumerate(reversed(pyramid_shape)):
         if box_size <= max_box_size:
-            return stride
-    return stride
+            return len(pyramid_shape) - level - 1, stride
+    return 0, stride
 
 def init_targets(pyramid_shape, num_labels, device='cpu'):
     """Initialize storage for encoded targets for one image.
@@ -98,13 +98,12 @@ def init_targets(pyramid_shape, num_labels, device='cpu'):
          'center_arr': <tensor with shape (1, h, w)>}}
         with all values set to 0
     """
-    targets = {}
-    for stride, _, h, w in pyramid_shape:
+    targets = []
+    for _, _, h, w in pyramid_shape:
         reg_arr = torch.zeros((4, h, w), device=device)
         label_arr = torch.zeros((num_labels, h, w), device=device)
         center_arr = torch.zeros((1, h, w), device=device)
-        targets[stride] = {
-            'reg_arr': reg_arr, 'label_arr': label_arr, 'center_arr': center_arr}
+        targets.append((reg_arr, label_arr, center_arr))
     return targets
 
 def sort_boxes(boxes, labels):
@@ -148,11 +147,7 @@ def encode_targets(boxes, labels, pyramid_shape, num_labels):
     # for each box, get arrays for matching stride and encode box
     box_sizes, _ = torch.max(boxes[:, 2:] - boxes[:, 0:2], dim=1)
     for box, label, box_size in zip(boxes, labels, box_sizes):
-        stride = get_stride(box_size, pyramid_shape)
-        reg_arr = targets[stride]['reg_arr']
-        label_arr = targets[stride]['label_arr']
-        center_arr = targets[stride]['center_arr']
-        encode_box(
-            reg_arr, label_arr, center_arr, stride, box, int(label.item()))
+        level, stride = get_level(box_size, pyramid_shape)
+        encode_box(*targets[level], stride, box, int(label.item()))
 
     return targets

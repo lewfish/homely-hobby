@@ -52,10 +52,7 @@ def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None
         boxes = yb[0][i]
         labels = yb[1][i]
         boxes = to_box_pixel(boxes, *images[0].shape[1:3])
-        targets.append({
-            'boxes': boxes,
-            'labels': labels
-        })
+        targets.append((boxes, labels))
 
     out = None
     loss = torch.Tensor([0.0]).to(device=device)

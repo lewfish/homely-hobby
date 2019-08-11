@@ -94,16 +94,19 @@ def fcos_loss(out, targets):
     targets_center_arrs = []
     out_center_arrs = []
 
-    for i, s in enumerate(out.keys()):
-        num_labels = targets[s]['label_arr'].shape[0]
-        targets_label_arr = targets[s]['label_arr'].reshape(num_labels, -1).permute(1, 0)
-        out_label_arr = out[s]['label_arr'].reshape(num_labels, -1).permute(1, 0)
+    for _out, _targets in zip(out, targets):
+        out_reg_arr, out_label_arr, out_center_arr = _out
+        targets_reg_arr, targets_label_arr, targets_center_arr = _targets
+
+        num_labels = targets_label_arr.shape[0]
+        targets_label_arr = targets_label_arr.reshape(num_labels, -1).permute(1, 0)
+        out_label_arr = out_label_arr.reshape(num_labels, -1).permute(1, 0)
 
         pos_indicator = targets_label_arr.sum(1) > 0.0
-        targets_reg_arr = targets[s]['reg_arr'].reshape(4, -1).permute(1, 0)[pos_indicator, :]
-        targets_center_arr = targets[s]['center_arr'].reshape(1, -1).permute(1, 0)[pos_indicator, :]
-        out_reg_arr = out[s]['reg_arr'].reshape(4, -1).permute(1, 0)[pos_indicator, :]
-        out_center_arr = out[s]['center_arr'].reshape(1, -1).permute(1, 0)[pos_indicator, :]
+        targets_reg_arr = targets_reg_arr.reshape(4, -1).permute(1, 0)[pos_indicator, :]
+        targets_center_arr = targets_center_arr.reshape(1, -1).permute(1, 0)[pos_indicator, :]
+        out_reg_arr = out_reg_arr.reshape(4, -1).permute(1, 0)[pos_indicator, :]
+        out_center_arr = out_center_arr.reshape(1, -1).permute(1, 0)[pos_indicator, :]
 
         targets_label_arrs.append(targets_label_arr)
         out_label_arrs.append(out_label_arr)
@@ -134,30 +137,27 @@ def fcos_loss(out, targets):
 def get_batch_loss(head_out, targets, pyramid_shape, num_labels):
     batch_sz = len(targets)
     for i, single_target in enumerate(targets):
-        boxes = single_target['boxes']
-        labels = single_target['labels']
-        encoded_targets = encode_targets(
+        boxes, labels = single_target
+        single_encoded_targets = encode_targets(
             boxes, labels, pyramid_shape, num_labels)
 
-        single_head_out = {}
-        for stride in head_out.keys():
+        single_head_out = []
+        for level_out in head_out:
             # Don't convert logits to probabilities for output since
             # loss function expects logits for output
             # (and probabilities for targets)
-            single_head_out[stride] = {
-                'reg_arr': head_out[stride]['reg_arr'][i],
-                'label_arr': head_out[stride]['label_arr'][i],
-                'center_arr': head_out[stride]['center_arr'][i]
-            }
+            single_head_out.append((
+                level_out[0][i], level_out[1][i], level_out[2][i]))
+
         if i == 0:
-            loss_dict = fcos_loss(single_head_out, encoded_targets)
+            loss_dict = fcos_loss(single_head_out, single_encoded_targets)
         else:
-            ld = fcos_loss(single_head_out, encoded_targets)
+            ld = fcos_loss(single_head_out, single_encoded_targets)
             loss_dict['label_loss'] += ld['label_loss']
             loss_dict['reg_loss'] += ld['reg_loss']
             loss_dict['center_loss'] += ld['center_loss']
 
-        loss_dict['label_loss'] /= batch_sz
-        loss_dict['reg_loss'] /= batch_sz
-        loss_dict['center_loss'] /= batch_sz
+    loss_dict['label_loss'] /= batch_sz
+    loss_dict['reg_loss'] /= batch_sz
+    loss_dict['center_loss'] /= batch_sz
     return loss_dict

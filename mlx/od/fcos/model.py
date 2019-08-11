@@ -170,7 +170,7 @@ class FCOSHead(nn.Module):
         label_branch_arr = self.label_branch(x)
         label_arr = self.label_conv(label_branch_arr)
         center_arr = self.center_conv(label_branch_arr)
-        return {'reg_arr': reg_arr, 'label_arr': label_arr, 'center_arr': center_arr}
+        return (reg_arr, label_arr, center_arr)
 
 class FCOS(nn.Module):
     """Fully convolutional one stage object detector
@@ -226,12 +226,12 @@ class FCOS(nn.Module):
         self.pyramid_shape = [
             (s, m, h, w) for s, m, (h, w) in zip(strides, max_box_sides, hws)]
 
-        head_out = {}
-        for i, (stride, level_out) in enumerate(zip(strides, fpn_out)):
-            head_out[stride] = self.head(level_out, self.scale_params[i])
+        head_out = []
+        for i, level_out in enumerate(fpn_out):
+            head_out.append(self.head(level_out, self.scale_params[i]))
 
         if targets is None:
-            out = decode_batch_output(head_out, img_height, img_width)
+            out = decode_batch_output(head_out, self.pyramid_shape, img_height, img_width)
             if get_head_out:
                 return out, head_out
             return out
