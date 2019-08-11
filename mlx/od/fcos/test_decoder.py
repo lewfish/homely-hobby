@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from mlx.od.fcos.decoder import decode_level_output, decode_output
+from mlx.od.fcos.decoder import decode_level_output, decode_single_output
 from mlx.od.fcos.encoder import encode_box, encode_targets
 
 class TestDecodeLevelOutput(unittest.TestCase):
@@ -118,7 +118,7 @@ class TestDecodeOutput(unittest.TestCase):
 
         targets = encode_targets(
             exp_boxes, exp_labels, pyramid_shape, num_labels)
-        boxes, labels, scores, centerness = decode_output(
+        boxes, labels, scores, centerness = decode_single_output(
             targets, score_thresh=score_thresh)
 
         def make_tuple_set(boxes, labels):

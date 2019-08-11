@@ -128,7 +128,6 @@ def train(config_path, opts):
                 learn, best_model_path, monitor='coco_metric', every='improvement'),
             MySaveModelCallback(learn, last_model_path, every='epoch'),
             TrackEpochCallback(learn),
-            tb_logger
         ]
         callbacks.extend(extra_callbacks)
         learn.fit_one_cycle(cfg.solver.num_epochs, cfg.solver.lr, callbacks=callbacks)

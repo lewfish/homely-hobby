@@ -4,13 +4,9 @@ import math
 import torch
 import torch.nn as nn
 from torchvision import models
-from torchvision.ops.boxes import batched_nms
 
-from mlx.od.fcos.decoder import decode_output
-from mlx.od.fcos.encoder import encode_targets
-from mlx.od.fcos.nms import compute_nms
-from mlx.od.fcos.loss import focal_loss
-from mlx.od.fcos.iou_loss import IOULoss
+from mlx.od.fcos.decoder import decode_batch_output
+from mlx.od.fcos.loss import get_batch_loss
 
 class FPN(nn.Module):
     """Feature Pyramid Network backbone.
@@ -194,76 +190,6 @@ class FCOS(nn.Module):
         self.scale_params = nn.Parameter(torch.ones((num_scales,)))
         self.head = FCOSHead(num_labels, in_channels=out_channels)
 
-    def loss(self, out, targets):
-        """Compute loss for a single image.
-
-        Note: the label_arr and center_arr for output is assumed to contain
-        logits, and is assumed to contain probabilities for targets.
-
-        Args:
-            out: (dict) the output of the heads for the whole pyramid
-            targets: (dict) the encoded targets for the whole pyramid
-
-            the format for both is a dict with keys that are strides (int)
-            and values that are (dict) of form {`
-                'reg_arr': <tensor with shape (4, h*, w*)>,
-                'label_arr': <tensor with shape (num_labels, h*, w*)>,
-                'center_arr': <tensor with shape (1, h*, w*)>
-            }
-
-        Returns:
-            dict of form {
-                'reg_loss': <tensor[1]>,
-                'label_loss': <tensor[1]>,
-                'center_loss': <tensor[1]>
-            }
-        """
-        iou_loss = IOULoss()
-
-        targets_label_arrs = []
-        out_label_arrs = []
-        targets_reg_arrs = []
-        out_reg_arrs = []
-        targets_center_arrs = []
-        out_center_arrs = []
-
-        for i, s in enumerate(out.keys()):
-            num_labels = targets[s]['label_arr'].shape[0]
-            targets_label_arr = targets[s]['label_arr'].reshape(num_labels, -1).permute(1, 0)
-            out_label_arr = out[s]['label_arr'].reshape(num_labels, -1).permute(1, 0)
-
-            pos_indicator = targets_label_arr.sum(1) > 0.0
-            targets_reg_arr = targets[s]['reg_arr'].reshape(4, -1).permute(1, 0)[pos_indicator, :]
-            targets_center_arr = targets[s]['center_arr'].reshape(1, -1).permute(1, 0)[pos_indicator, :]
-            out_reg_arr = out[s]['reg_arr'].reshape(4, -1).permute(1, 0)[pos_indicator, :]
-            out_center_arr = out[s]['center_arr'].reshape(1, -1).permute(1, 0)[pos_indicator, :]
-
-            targets_label_arrs.append(targets_label_arr)
-            out_label_arrs.append(out_label_arr)
-            targets_reg_arrs.append(targets_reg_arr)
-            out_reg_arrs.append(out_reg_arr)
-            targets_center_arrs.append(targets_center_arr)
-            out_center_arrs.append(out_center_arr)
-
-        targets_label_arr = torch.cat(targets_label_arrs)
-        out_label_arr = torch.cat(out_label_arrs)
-        targets_reg_arr = torch.cat(targets_reg_arrs)
-        out_reg_arr = torch.cat(out_reg_arrs)
-        targets_center_arr = torch.cat(targets_center_arrs)
-        out_center_arr = torch.cat(out_center_arrs)
-
-        npos = targets_reg_arr.shape[0] + 1
-        label_loss = focal_loss(out_label_arr, targets_label_arr) / npos
-        reg_loss = torch.tensor(0.0, device=label_loss.device)
-        center_loss = torch.tensor(0.0, device=label_loss.device)
-        if npos > 1:
-            reg_loss = iou_loss(out_reg_arr, targets_reg_arr, targets_center_arr)
-            center_loss = nn.functional.binary_cross_entropy_with_logits(
-                out_center_arr, targets_center_arr, reduction='mean')
-
-        loss_dict = {'label_loss': label_loss, 'reg_loss': reg_loss, 'center_loss': center_loss}
-        return loss_dict
-
     def forward(self, input, targets=None, get_head_out=False):
         """Compute output of FCOS.
 
@@ -291,14 +217,12 @@ class FCOS(nn.Module):
         """
         fpn_out = self.fpn(input)
 
-        batch_sz = input.shape[0]
-        h, w = input.shape[2:]
+        img_height, img_width = input.shape[2:]
         strides = self.fpn.strides
         hws = [level_out.shape[2:] for level_out in fpn_out]
         max_box_sides = [256, 128, 64, 32, 16]
         if self.levels is not None:
             max_box_sides = [max_box_sides[l] for l in self.levels]
-        iou_thresh = 0.5
         self.pyramid_shape = [
             (s, m, h, w) for s, m, (h, w) in zip(strides, max_box_sides, hws)]
 
@@ -307,61 +231,13 @@ class FCOS(nn.Module):
             head_out[stride] = self.head(level_out, self.scale_params[i])
 
         if targets is None:
-            out = []
-            for i in range(batch_sz):
-                single_head_out = {}
-                for k, v in head_out.items():
-                    # Convert logits in label_arr and center_arr
-                    # to probabilities since decode expects probabilities.
-                    single_head_out[k] = {
-                        'reg_arr': v['reg_arr'][i],
-                        'label_arr': torch.sigmoid(v['label_arr'][i]),
-                        'center_arr': torch.sigmoid(v['center_arr'][i])
-                    }
-                boxes, labels, scores, centerness = decode_output(single_head_out)
-                nms_scores = scores * centerness
-
-                boxes = torch.stack([
-                    torch.clamp(boxes[:, 0], 0, h),
-                    torch.clamp(boxes[:, 1], 0, w),
-                    torch.clamp(boxes[:, 2], 0, h),
-                    torch.clamp(boxes[:, 3], 0, w)
-                ], dim=1)
-                good_inds = batched_nms(boxes, nms_scores, labels, iou_thresh)
-                boxes, labels, scores = \
-                    boxes[good_inds, :], labels[good_inds], nms_scores[good_inds]
-                out.append({'boxes': boxes, 'labels': labels, 'scores': scores})
+            out = decode_batch_output(head_out, img_height, img_width)
             if get_head_out:
                 return out, head_out
             return out
 
-        for i, single_target in enumerate(targets):
-            boxes = single_target['boxes']
-            labels = single_target['labels']
-            encoded_targets = encode_targets(
-                boxes, labels, self.pyramid_shape, self.num_labels)
-
-            single_head_out = {}
-            for s in strides:
-                # Don't convert logits to probabilities for output since
-                # loss function expects logits for output
-                # (and probabilities for targets)
-                single_head_out[s] = {
-                    'reg_arr': head_out[s]['reg_arr'][i],
-                    'label_arr': head_out[s]['label_arr'][i],
-                    'center_arr': head_out[s]['center_arr'][i]
-                }
-            if i == 0:
-                loss_dict = self.loss(single_head_out, encoded_targets)
-            else:
-                ld = self.loss(single_head_out, encoded_targets)
-                loss_dict['label_loss'] += ld['label_loss']
-                loss_dict['reg_loss'] += ld['reg_loss']
-                loss_dict['center_loss'] += ld['center_loss']
-
-        loss_dict['label_loss'] /= batch_sz
-        loss_dict['reg_loss'] /= batch_sz
-        loss_dict['center_loss'] /= batch_sz
+        loss_dict = get_batch_loss(
+            head_out, targets, self.pyramid_shape, self.num_labels)
         if get_head_out:
             return loss_dict, head_out
         return loss_dict
