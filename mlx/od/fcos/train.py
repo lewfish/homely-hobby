@@ -29,9 +29,10 @@ from mlx.od.fcos.callbacks import (
     MyCSVLogger, SyncCallback, TensorboardLogger,
     SubLossMetric, MySaveModelCallback)
 from mlx.od.fcos.data import setup_output_dir, build_databunch
-from mlx.od.fcos.utils import to_box_pixel
 from mlx.od.fcos.config import load_config
+from mlx.od.fcos.boxlist import BoxList, to_box_pixel
 from mlx.filesystem.utils import sync_to_dir
+
 
 # Modified from fastai to handle model which only computes loss when targets
 # are passed in, and only computes output otherwise. This should run faster
@@ -52,7 +53,7 @@ def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None
         boxes = yb[0][i]
         labels = yb[1][i]
         boxes = to_box_pixel(boxes, *images[0].shape[1:3])
-        targets.append((boxes, labels))
+        targets.append(BoxList(boxes, labels))
 
     out = None
     loss = torch.Tensor([0.0]).to(device=device)

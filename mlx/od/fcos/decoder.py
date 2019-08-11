@@ -1,7 +1,7 @@
 import torch
 import math
 
-from torchvision.ops.boxes import batched_nms
+from mlx.od.fcos.boxlist import BoxList
 
 def decode_level_output(reg_arr, label_arr, center_arr, stride, score_thresh=0.05):
     """Decode output of head for one level of the pyramid for one image.
@@ -38,9 +38,7 @@ def decode_level_output(reg_arr, label_arr, center_arr, stride, score_thresh=0.0
     labels = labels.reshape(-1)
     scores = scores.reshape(-1)
     centerness = center_arr.reshape(-1)
-    keep_inds = scores > score_thresh
-    return (boxes[keep_inds, :], labels[keep_inds], scores[keep_inds],
-            centerness[keep_inds])
+    return BoxList(boxes, labels, scores, centerness).score_filter(score_thresh)
 
 def decode_single_output(output, pyramid_shape, score_thresh=0.05):
     """Decode output of heads for all levels of pyramid for one image.
@@ -57,22 +55,17 @@ def decode_single_output(output, pyramid_shape, score_thresh=0.05):
     Returns:
         (boxes, labels, scores)
     """
-    all_boxes, all_labels, all_scores, all_centerness = [], [], [], []
+    boxlists = []
     for level, level_out in enumerate(output):
         stride = pyramid_shape[level][0]
-        boxes, labels, scores, centerness = decode_level_output(
+        boxlist = decode_level_output(
             *level_out, stride, score_thresh=score_thresh)
-        all_boxes.append(boxes)
-        all_labels.append(labels)
-        all_scores.append(scores)
-        all_centerness.append(centerness)
-
-    return (torch.cat(all_boxes), torch.cat(all_labels), torch.cat(all_scores),
-            torch.cat(all_centerness))
+        boxlists.append(boxlist)
+    return BoxList.cat(boxlists)
 
 def decode_batch_output(head_out, pyramid_shape, img_height, img_width,
                         iou_thresh=0.5):
-    out = []
+    boxlists = []
     batch_sz = head_out[0][0].shape[0]
     for i in range(batch_sz):
         single_head_out = []
@@ -83,17 +76,11 @@ def decode_batch_output(head_out, pyramid_shape, img_height, img_width,
                 level_head_out[0][i],
                 torch.sigmoid(level_head_out[1][i]),
                 torch.sigmoid(level_head_out[2][i])))
-        boxes, labels, scores, centerness = decode_single_output(
-            single_head_out, pyramid_shape)
-        nms_scores = scores * centerness
-        boxes = torch.stack([
-            torch.clamp(boxes[:, 0], 0, img_height),
-            torch.clamp(boxes[:, 1], 0, img_width),
-            torch.clamp(boxes[:, 2], 0, img_height),
-            torch.clamp(boxes[:, 3], 0, img_width)
-        ], dim=1)
-        good_inds = batched_nms(boxes, nms_scores, labels, iou_thresh)
-        boxes, labels, scores = \
-            boxes[good_inds, :], labels[good_inds], nms_scores[good_inds]
-        out.append((boxes, labels, scores))
-    return out
+        boxlist = decode_single_output(single_head_out, pyramid_shape)
+        boxlist = BoxList(
+            boxlist.boxes, boxlist.labels, boxlist.scores * boxlist.centerness,
+            boxlist.centerness)
+        boxlist = boxlist.clamp(img_height, img_width)
+        boxlist = boxlist.nms(iou_thresh=iou_thresh)
+        boxlists.append(boxlist)
+    return boxlists

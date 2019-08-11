@@ -14,7 +14,7 @@ import matplotlib.gridspec as gridspec
 
 from mlx.filesystem.utils import make_dir, zipdir
 from mlx.od.fcos.encoder import encode_targets
-from mlx.od.fcos.utils import to_box_pixel
+from mlx.od.fcos.boxlist import to_box_pixel
 
 def plot_data(data, output_dir, max_per_split=25):
     """Plot images and ground truth coming out the dataloader."""
@@ -77,15 +77,11 @@ def get_pred(img, model, score_thresh):
     mean, std = imagenet_stats
     x = normalize(x, torch.tensor(mean, device=device), torch.tensor(std, device=device))
     out, head_out = model(x, get_head_out=True)
-    out = out[0]
-    # Filter boxes whose score is high enough
-    boxes, labels, scores = out[0].cpu(), out[1].cpu(), out[2].cpu()
-    keep_inds = scores > score_thresh
-    boxes, labels, scores = boxes[keep_inds, :], labels[keep_inds], scores[keep_inds]
-    out = (boxes, labels, scores)
-    return out, head_out
+    boxlist = out[0]
+    boxlist = boxlist.score_filter(score_thresh).cpu()
+    return boxlist, head_out
 
-def plot_image_preds(x, y, out, classes):
+def plot_image_preds(x, y, out_boxlist, classes):
     "Plot original, ground truth, and predictions on single figure."""
     h, w = x.size
     fig = plt.figure(constrained_layout=True, figsize=(6, 3))
@@ -104,7 +100,7 @@ def plot_image_preds(x, y, out, classes):
 
     ax = fig.add_subplot(grid[2])
     ax.set_title('predictions')
-    boxes, labels, scores = out
+    boxes, labels, scores, _ = out_boxlist.tuple()
     if boxes.shape[0] > 0:
         z = ImageBBox.create(h, w, boxes, labels,
                              classes=classes, scale=True)
@@ -163,10 +159,10 @@ def plot_preds(dataset, model, classes, output_dir, max_plots=25, score_thresh=0
             break
 
         # Get predictions
-        out, head_out = get_pred(x, model, score_thresh)
+        boxlist, head_out = get_pred(x, model, score_thresh)
 
         # Plot image, ground truth, and predictions
-        fig = plot_image_preds(x, y, out, classes)
+        fig = plot_image_preds(x, y, boxlist, classes)
         plt.savefig(join(preds_dir, '{}.png'.format(img_id)), dpi=200,
                     bbox_inches='tight')
         plt.close(fig)

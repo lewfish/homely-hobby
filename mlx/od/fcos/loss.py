@@ -137,7 +137,7 @@ def fcos_loss(out, targets):
 def get_batch_loss(head_out, targets, pyramid_shape, num_labels):
     batch_sz = len(targets)
     for i, single_target in enumerate(targets):
-        boxes, labels = single_target
+        boxes, labels = single_target.boxes, single_target.labels
         single_encoded_targets = encode_targets(
             boxes, labels, pyramid_shape, num_labels)
 
