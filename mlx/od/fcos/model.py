@@ -6,7 +6,7 @@ import torch.nn as nn
 from torchvision import models
 
 from mlx.od.fcos.decoder import decode_batch_output
-from mlx.od.fcos.loss import get_batch_loss
+from mlx.od.fcos.loss import fcos_batch_loss
 
 class FPN(nn.Module):
     """Feature Pyramid Network backbone.
@@ -236,7 +236,7 @@ class FCOS(nn.Module):
                 return out, head_out
             return out
 
-        loss_dict = get_batch_loss(
+        loss_dict = fcos_batch_loss(
             head_out, targets, self.pyramid_shape, self.num_labels)
         if get_head_out:
             return loss_dict, head_out

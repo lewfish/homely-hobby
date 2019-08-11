@@ -27,6 +27,7 @@ class BoxList():
     def copy(self):
         return BoxList(self.boxes.copy(), self.labels.copy(),
                        self.scores.copy(), self.centerness.copy())
+
     def cpu(self):
         return BoxList(self.boxes.cpu(), self.labels.cpu(), self.scores.cpu(),
                        self.centerness.cpu())

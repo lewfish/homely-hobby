@@ -61,7 +61,20 @@ class IOULoss(nn.Module):
             assert losses.numel() != 0
             return losses.mean()
 
-def fcos_loss(out, targets):
+def flatten_pyramid(pyramid):
+    reg_arrs = []
+    label_arrs = []
+    center_arrs = []
+
+    for reg_arr, label_arr, center_arr in pyramid:
+        num_labels = label_arr.shape[0]
+        reg_arrs.append(reg_arr.reshape(4, -1).permute(1, 0))
+        label_arrs.append(label_arr.reshape(num_labels, -1).permute(1, 0))
+        center_arrs.append(center_arr.reshape(1, -1).permute(1, 0))
+
+    return torch.cat(reg_arrs), torch.cat(label_arrs), torch.cat(center_arrs)
+
+def fcos_single_loss(out, targets):
     """Compute loss for a single image.
 
     Note: the label_arr and center_arr for output is assumed to contain
@@ -86,41 +99,14 @@ def fcos_loss(out, targets):
         }
     """
     iou_loss = IOULoss()
+    out_reg_arr, out_label_arr, out_center_arr = flatten_pyramid(out)
+    targets_reg_arr, targets_label_arr, targets_center_arr = flatten_pyramid(targets)
 
-    targets_label_arrs = []
-    out_label_arrs = []
-    targets_reg_arrs = []
-    out_reg_arrs = []
-    targets_center_arrs = []
-    out_center_arrs = []
-
-    for _out, _targets in zip(out, targets):
-        out_reg_arr, out_label_arr, out_center_arr = _out
-        targets_reg_arr, targets_label_arr, targets_center_arr = _targets
-
-        num_labels = targets_label_arr.shape[0]
-        targets_label_arr = targets_label_arr.reshape(num_labels, -1).permute(1, 0)
-        out_label_arr = out_label_arr.reshape(num_labels, -1).permute(1, 0)
-
-        pos_indicator = targets_label_arr.sum(1) > 0.0
-        targets_reg_arr = targets_reg_arr.reshape(4, -1).permute(1, 0)[pos_indicator, :]
-        targets_center_arr = targets_center_arr.reshape(1, -1).permute(1, 0)[pos_indicator, :]
-        out_reg_arr = out_reg_arr.reshape(4, -1).permute(1, 0)[pos_indicator, :]
-        out_center_arr = out_center_arr.reshape(1, -1).permute(1, 0)[pos_indicator, :]
-
-        targets_label_arrs.append(targets_label_arr)
-        out_label_arrs.append(out_label_arr)
-        targets_reg_arrs.append(targets_reg_arr)
-        out_reg_arrs.append(out_reg_arr)
-        targets_center_arrs.append(targets_center_arr)
-        out_center_arrs.append(out_center_arr)
-
-    targets_label_arr = torch.cat(targets_label_arrs)
-    out_label_arr = torch.cat(out_label_arrs)
-    targets_reg_arr = torch.cat(targets_reg_arrs)
-    out_reg_arr = torch.cat(out_reg_arrs)
-    targets_center_arr = torch.cat(targets_center_arrs)
-    out_center_arr = torch.cat(out_center_arrs)
+    pos_indicator = targets_label_arr.sum(1) > 0.0
+    out_reg_arr = out_reg_arr[pos_indicator, :]
+    targets_reg_arr = targets_reg_arr[pos_indicator, :]
+    out_center_arr = out_center_arr[pos_indicator, :]
+    targets_center_arr = targets_center_arr[pos_indicator, :]
 
     npos = targets_reg_arr.shape[0] + 1
     label_loss = focal_loss(out_label_arr, targets_label_arr) / npos
@@ -134,7 +120,7 @@ def fcos_loss(out, targets):
     loss_dict = {'label_loss': label_loss, 'reg_loss': reg_loss, 'center_loss': center_loss}
     return loss_dict
 
-def get_batch_loss(head_out, targets, pyramid_shape, num_labels):
+def fcos_batch_loss(head_out, targets, pyramid_shape, num_labels):
     batch_sz = len(targets)
     for i, single_target in enumerate(targets):
         boxes, labels = single_target.boxes, single_target.labels
@@ -150,9 +136,9 @@ def get_batch_loss(head_out, targets, pyramid_shape, num_labels):
                 level_out[0][i], level_out[1][i], level_out[2][i]))
 
         if i == 0:
-            loss_dict = fcos_loss(single_head_out, single_encoded_targets)
+            loss_dict = fcos_single_loss(single_head_out, single_encoded_targets)
         else:
-            ld = fcos_loss(single_head_out, single_encoded_targets)
+            ld = fcos_single_loss(single_head_out, single_encoded_targets)
             loss_dict['label_loss'] += ld['label_loss']
             loss_dict['reg_loss'] += ld['reg_loss']
             loss_dict['center_loss'] += ld['center_loss']
