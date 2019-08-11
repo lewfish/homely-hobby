@@ -12,7 +12,7 @@ class TestFPN(unittest.TestCase):
         img = torch.empty((1, 3, h, w))
         out = model(img)
 
-        self.assertEqual(len(out), 4)
+        self.assertEqual(len(out), 5)
         for i, s in enumerate(model.strides):
             self.assertListEqual(list(out[i].shape), [1, c, h//s, w//s])
 
