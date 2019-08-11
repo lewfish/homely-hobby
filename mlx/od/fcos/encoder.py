@@ -114,7 +114,7 @@ def sort_boxes(boxes, labels):
     labels = labels[box_inds]
     return boxes, labels
 
-def encode_targets(boxes, labels, pyramid_shape, num_labels):
+def encode_single_targets(boxes, labels, pyramid_shape, num_labels):
     """Encode boxes and labels into a pyramid of arrays for one image.
 
     Encodes each box and label into the arrays representing a single level of

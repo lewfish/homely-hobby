@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from mlx.od.fcos.encoder import encode_targets
+from mlx.od.fcos.encoder import encode_single_targets
 
 def focal_loss(output, target, gamma=2, alpha=0.25):
     """Compute focal loss for label arrays.
@@ -61,20 +61,23 @@ class IOULoss(nn.Module):
             assert losses.numel() != 0
             return losses.mean()
 
-def flatten_pyramid(pyramid):
+def flatten_output(output):
     reg_arrs = []
     label_arrs = []
     center_arrs = []
 
-    for reg_arr, label_arr, center_arr in pyramid:
-        num_labels = label_arr.shape[0]
-        reg_arrs.append(reg_arr.reshape(4, -1).permute(1, 0))
-        label_arrs.append(label_arr.reshape(num_labels, -1).permute(1, 0))
-        center_arrs.append(center_arr.reshape(1, -1).permute(1, 0))
+    for reg_arr, label_arr, center_arr in output:
+        batch_sz, num_labels = label_arr.shape[0:2]
+        # (N, 4, H, W) -> (N, H, W, 4) -> (N*H*W, 4)
+        reg_arrs.append(reg_arr.permute((0, 2, 3, 1)).reshape((-1, 4)))
+        # (N, C, H, W) -> (N, H, W, C) -> (N*H*W, C)
+        label_arrs.append(label_arr.permute((0, 2, 3, 1)).reshape((-1, num_labels)))
+        # (N, 1, H, W) -> (N, H, W, 1) -> (N*H*W,)
+        center_arrs.append(center_arr.permute((0, 2, 3, 1)).reshape((-1,)))
 
     return torch.cat(reg_arrs), torch.cat(label_arrs), torch.cat(center_arrs)
 
-def fcos_single_loss(out, targets):
+def fcos_batch_loss(out, targets, pyramid_shape, num_labels):
     """Compute loss for a single image.
 
     Note: the label_arr and center_arr for output is assumed to contain
@@ -99,16 +102,32 @@ def fcos_single_loss(out, targets):
         }
     """
     iou_loss = IOULoss()
-    out_reg_arr, out_label_arr, out_center_arr = flatten_pyramid(out)
-    targets_reg_arr, targets_label_arr, targets_center_arr = flatten_pyramid(targets)
+    batch_sz = len(targets)
+    reg_arrs, label_arrs, center_arrs = [], [], []
+    for single_targets in targets:
+        single_targets = encode_single_targets(
+            single_targets.boxes, single_targets.labels, pyramid_shape,
+            num_labels)
+        for reg_arr, label_arr, center_arr in single_targets:
+            # (4, H, W) -> (H, W, 4) -> (H*W, 4)
+            reg_arrs.append(reg_arr.permute((1, 2, 0)).reshape((-1, 4)))
+            # (C, H, W) -> (H, W, C) -> (H*W, C)
+            label_arrs.append(label_arr.permute((1, 2, 0)).reshape((-1, num_labels)))
+            # (1, H, W) -> (H, W, 1) -> (H*W,)
+            center_arrs.append(center_arr.permute((1, 2, 0)).reshape((-1,)))
+
+        targets_reg_arr, targets_label_arr, targets_center_arr = (
+            torch.cat(reg_arrs), torch.cat(label_arrs),
+            torch.cat(center_arrs))
+    out_reg_arr, out_label_arr, out_center_arr = flatten_output(out)
 
     pos_indicator = targets_label_arr.sum(1) > 0.0
     out_reg_arr = out_reg_arr[pos_indicator, :]
     targets_reg_arr = targets_reg_arr[pos_indicator, :]
-    out_center_arr = out_center_arr[pos_indicator, :]
-    targets_center_arr = targets_center_arr[pos_indicator, :]
+    out_center_arr = out_center_arr[pos_indicator]
+    targets_center_arr = targets_center_arr[pos_indicator]
 
-    npos = targets_reg_arr.shape[0] + 1
+    npos = targets_reg_arr.shape[0] + batch_sz
     label_loss = focal_loss(out_label_arr, targets_label_arr) / npos
     reg_loss = torch.tensor(0.0, device=label_loss.device)
     center_loss = torch.tensor(0.0, device=label_loss.device)
@@ -118,32 +137,4 @@ def fcos_single_loss(out, targets):
             out_center_arr, targets_center_arr, reduction='mean')
 
     loss_dict = {'label_loss': label_loss, 'reg_loss': reg_loss, 'center_loss': center_loss}
-    return loss_dict
-
-def fcos_batch_loss(head_out, targets, pyramid_shape, num_labels):
-    batch_sz = len(targets)
-    for i, single_target in enumerate(targets):
-        boxes, labels = single_target.boxes, single_target.labels
-        single_encoded_targets = encode_targets(
-            boxes, labels, pyramid_shape, num_labels)
-
-        single_head_out = []
-        for level_out in head_out:
-            # Don't convert logits to probabilities for output since
-            # loss function expects logits for output
-            # (and probabilities for targets)
-            single_head_out.append((
-                level_out[0][i], level_out[1][i], level_out[2][i]))
-
-        if i == 0:
-            loss_dict = fcos_single_loss(single_head_out, single_encoded_targets)
-        else:
-            ld = fcos_single_loss(single_head_out, single_encoded_targets)
-            loss_dict['label_loss'] += ld['label_loss']
-            loss_dict['reg_loss'] += ld['reg_loss']
-            loss_dict['center_loss'] += ld['center_loss']
-
-    loss_dict['label_loss'] /= batch_sz
-    loss_dict['reg_loss'] /= batch_sz
-    loss_dict['center_loss'] /= batch_sz
     return loss_dict

@@ -3,7 +3,7 @@ import math
 
 import torch
 
-from mlx.od.fcos.encoder import encode_box, encode_targets
+from mlx.od.fcos.encoder import encode_box, encode_single_targets
 
 class TestEncodeBox(unittest.TestCase):
     def test_encode_too_small(self):
@@ -79,7 +79,7 @@ class TestEncodeTargets(unittest.TestCase):
             [0, 0, 32, 32]
         ])
         labels = torch.Tensor([0, 0, 1])
-        targets = encode_targets(boxes, labels, pyramid_shape, num_labels)
+        targets = encode_single_targets(boxes, labels, pyramid_shape, num_labels)
 
         self.assertTrue(torch.all(targets[8]['reg_arr'] == 0))
         self.assertTrue(torch.all(targets[8]['label_arr'] == 0))

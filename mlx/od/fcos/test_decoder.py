@@ -3,7 +3,7 @@ import unittest
 import torch
 
 from mlx.od.fcos.decoder import decode_level_output, decode_single_output
-from mlx.od.fcos.encoder import encode_box, encode_targets
+from mlx.od.fcos.encoder import encode_box, encode_single_targets
 
 class TestDecodeLevelOutput(unittest.TestCase):
     def encode_decode_level(self, stride, h, w, exp_boxes):
@@ -116,7 +116,7 @@ class TestDecodeOutput(unittest.TestCase):
         score_thresh = 0.2
         num_labels = 2
 
-        targets = encode_targets(
+        targets = encode_single_targets(
             exp_boxes, exp_labels, pyramid_shape, num_labels)
         boxes, labels, scores, centerness = decode_single_output(
             targets, score_thresh=score_thresh)

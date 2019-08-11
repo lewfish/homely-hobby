@@ -13,7 +13,7 @@ import torch
 import matplotlib.gridspec as gridspec
 
 from mlx.filesystem.utils import make_dir, zipdir
-from mlx.od.fcos.encoder import encode_targets
+from mlx.od.fcos.encoder import encode_single_targets
 from mlx.od.fcos.boxlist import to_box_pixel
 
 def plot_data(data, output_dir, max_per_split=25):
@@ -197,7 +197,7 @@ def plot_preds(dataset, model, classes, output_dir, max_plots=25, score_thresh=0
         labels = torch.tensor(labels)
         boxes = (boxes + 1.0) / 2.0
         boxes *= torch.tensor([[h, w, h, w]], device=boxes.device, dtype=torch.float)
-        targets = encode_targets(boxes, labels, model.pyramid_shape, model.num_labels)
+        targets = encode_single_targets(boxes, labels, model.pyramid_shape, model.num_labels)
 
         # Plot encoding of ground truth at each level.
         for level, level_targets in enumerate(targets):
