@@ -3,6 +3,7 @@ import unittest
 import torch
 
 from mlx.od.fcos.model import FPN, FCOSHead, FCOS
+from mlx.od.fcos.boxlist import BoxList
 
 class TestFPN(unittest.TestCase):
     def test_fpn(self):
@@ -24,14 +25,14 @@ class TestFCOSHead(unittest.TestCase):
         scale_param = 2
         head = FCOSHead(num_labels, in_channels=c)
         x = torch.empty((1, c, h, w))
-        head_out = head(x, scale_param)
+        reg_arr, label_arr, center_arr = head(x, scale_param)
 
         self.assertListEqual(
-            list(head_out['reg_arr'].shape), [1, 4, h, w])
+            list(reg_arr.shape), [1, 4, h, w])
         self.assertListEqual(
-            list(head_out['label_arr'].shape), [1, num_labels, h, w])
+            list(label_arr.shape), [1, num_labels, h, w])
         self.assertListEqual(
-            list(head_out['center_arr'].shape), [1, 1, h, w])
+            list(center_arr.shape), [1, 1, h, w])
 
 class TestFCOS(unittest.TestCase):
     def test_fcos(self):
@@ -39,13 +40,14 @@ class TestFCOS(unittest.TestCase):
         num_labels = 3
         x = torch.empty((1, 3, h, w))
         model = FCOS('resnet18', num_labels, pretrained=False)
-        out = model(x)
+        boxlists = model(x)
 
-        self.assertEqual(len(out), 1)
-        num_boxes = out[0]['boxes'].shape[0]
-        self.assertListEqual(list(out[0]['boxes'].shape), [num_boxes, 4])
-        self.assertListEqual(list(out[0]['labels'].shape), [num_boxes])
-        self.assertListEqual(list(out[0]['scores'].shape), [num_boxes])
+        self.assertEqual(len(boxlists), 1)
+        boxlist = boxlists[0]
+        num_boxes = boxlist.boxes.shape[0]
+        self.assertListEqual(list(boxlist.boxes.shape), [num_boxes, 4])
+        self.assertListEqual(list(boxlist.labels.shape), [num_boxes])
+        self.assertListEqual(list(boxlist.scores.shape), [num_boxes])
 
     def test_fcos_with_targets(self):
         h, w = 64, 64
@@ -58,7 +60,7 @@ class TestFCOS(unittest.TestCase):
             [8, 8, 12, 12]
         ])
         labels = torch.tensor([0, 1])
-        targets = [{'boxes': boxes, 'labels': labels}]
+        targets = [BoxList(boxes, labels)]
 
         loss_dict = model(x, targets)
         self.assertTrue('label_loss' in loss_dict)
@@ -76,7 +78,7 @@ class TestFCOS(unittest.TestCase):
             [16, 16, 32, 32]
         ])
         labels = torch.tensor([0, 1])
-        targets = [{'boxes': boxes, 'labels': labels}]
+        targets = [BoxList(boxes, labels)]
 
         model.train()
         model.zero_grad()

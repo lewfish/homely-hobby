@@ -16,16 +16,16 @@ class TestDecodeLevelOutput(unittest.TestCase):
         for box, label in zip(exp_boxes, exp_labels):
             encode_box(reg_arr, label_arr, center_arr, stride, box,
                        label.int().item())
-        boxes, labels, scores, centerness = decode_level_output(
+        boxlist = decode_level_output(
             reg_arr, label_arr, center_arr, stride, score_thresh=score_thresh)
 
         def make_tuple_set(boxes, labels):
             return set([tuple(b.int().tolist()) + (l.int().item(),)
                         for b, l in zip(boxes, labels)])
 
-        self.assertEqual(make_tuple_set(boxes.int(), labels.int()),
+        self.assertEqual(make_tuple_set(boxlist.boxes.int(), boxlist.labels.int()),
                          make_tuple_set(exp_boxes, exp_labels))
-        self.assertTrue(torch.all(scores == 1))
+        self.assertTrue(torch.all(boxlist.scores == 1))
 
     def test_decode1(self):
         stride = 4
@@ -103,13 +103,13 @@ class TestDecodeLevelOutput(unittest.TestCase):
         center_arr[0, 1, 0] = 0.3
         center_arr[0, 1, 1] = 0.4
 
-        boxes, labels, scores, centerness = decode_level_output(
+        boxlist = decode_level_output(
             reg_arr, label_arr, center_arr, stride)
 
         exp_labels = torch.tensor([0, 0])
         exp_centerness = torch.tensor([0.1, 0.2])
-        self.assertTrue(labels.equal(exp_labels))
-        self.assertTrue(centerness.equal(exp_centerness))
+        self.assertTrue(boxlist.labels.equal(exp_labels))
+        self.assertTrue(boxlist.centerness.equal(exp_centerness))
 
 class TestDecodeOutput(unittest.TestCase):
     def encode_decode_output(self, pyramid_shape, exp_boxes, exp_labels):
@@ -118,16 +118,16 @@ class TestDecodeOutput(unittest.TestCase):
 
         targets = encode_single_targets(
             exp_boxes, exp_labels, pyramid_shape, num_labels)
-        boxes, labels, scores, centerness = decode_single_output(
-            targets, score_thresh=score_thresh)
+        boxlist = decode_single_output(
+            targets, pyramid_shape, score_thresh=score_thresh)
 
         def make_tuple_set(boxes, labels):
             return set([tuple(b.int().tolist()) + (l.int().item(),)
                         for b, l in zip(boxes, labels)])
 
-        self.assertEqual(make_tuple_set(boxes.int(), labels.int()),
+        self.assertEqual(make_tuple_set(boxlist.boxes.int(), boxlist.labels.int()),
                          make_tuple_set(exp_boxes, exp_labels))
-        self.assertTrue(torch.all(scores == 1))
+        self.assertTrue(torch.all(boxlist.scores == 1))
 
     def test_decode(self):
         pyramid_shape = [
