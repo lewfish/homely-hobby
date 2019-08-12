@@ -1,0 +1,17 @@
+model:
+  backbone_arch: "resnet18"
+  levels: [0, 1, 2, 3, 4]
+solver:
+  lr: 1e-4
+  num_epochs: 25
+  sync_interval: 2
+  batch_sz: 16
+  overfit_num_epochs: 500
+  overfit_sync_interval: 1000
+  test_num_epochs: 1
+data:
+  dataset: "pascal2007"
+  data_uri: "data/pascal_2007"
+  img_sz: 448
+output_uri: "output"
+base_uri: "s3://raster-vision-lf-dev/pascal2007"
