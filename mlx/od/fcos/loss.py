@@ -84,21 +84,23 @@ def fcos_batch_loss(out, targets, pyramid_shape, num_labels):
     logits, and is assumed to contain probabilities for targets.
 
     Args:
-        out: (dict) the output of the heads for the whole pyramid
-        targets: (dict) the encoded targets for the whole pyramid
+        out: the output of the heads for the whole pyramid
+        targets: list<BoxList> of length n
 
-        the format for both is a dict with keys that are strides (int)
-        and values that are (dict) of form {`
-            'reg_arr': <tensor with shape (4, h*, w*)>,
-            'label_arr': <tensor with shape (num_labels, h*, w*)>,
-            'center_arr': <tensor with shape (1, h*, w*)>
-        }
+        the format for both is list of tuples where each tuple corresponds to a
+        pyramid level. tuple is of form (reg_arr, label_arr, center_arr) where
+            - reg_arr is tensor<n, 4, h, w>,
+            - label_arr is tensor<n, num_labels, h, w>
+            - center_arr is tensor<n, 1, h, w>
+
+        and label_arr and center_arr values are probabilities for targets,
+        and logits for output.
 
     Returns:
         dict of form {
-            'reg_loss': <tensor[1]>,
-            'label_loss': <tensor[1]>,
-            'center_loss': <tensor[1]>
+            'reg_loss': tensor<1>,
+            'label_loss': tensor<1>,
+            'center_loss': tensor<1>
         }
     """
     iou_loss = IOULoss()

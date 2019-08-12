@@ -14,10 +14,10 @@ class BoxList():
         """Constructor.
 
         Args:
-            boxes: tensor (n, 4)
-            labels: tensor (n,)
-            scores: tensor (n,)
-            centerness: tensor (n,)
+            boxes: tensor<n, 4> with order ymin, xmin, ymax, xmax in pixels coords
+            labels: tensor<n,> with class ids starting at 1 (and 0 used for background)
+            scores: tensor<n,> with probabilities
+            centerness: tensor<n,> with probabilities
         """
         self.boxes = boxes
         self.labels = labels

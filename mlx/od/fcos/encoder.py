@@ -76,7 +76,7 @@ def get_level(box_size, pyramid_shape):
             descending order by stride
 
     Returns:
-        stride of level in pyramid that handles boxes of box_size
+        (index of level, stride of level)
     """
     for level, (stride, max_box_size, _, _) in enumerate(reversed(pyramid_shape)):
         if box_size <= max_box_size:
@@ -92,10 +92,11 @@ def init_targets(pyramid_shape, num_labels, device='cpu'):
         num_labels: (int) number of labels (ie. classes)
 
     Returns:
-        (dict) where keys are strides, values are dicts of form
-        {'reg_arr': <tensor with shape (4, h, w)>,
-         'label_arr': <tensor with shape (num_labels, h, w)>,
-         'center_arr': <tensor with shape (1, h, w)>}}
+        list of tuples where each tuple corresponds to a pyramid level
+        tuple is of form (reg_arr, label_arr, center_arr) where
+            - reg_arr is tensor<4, h, w>,
+            - label_arr is tensor<num_labels, h, w>
+            - center_arr is tensor<1, h, w>
         with all values set to 0
     """
     targets = []
@@ -117,22 +118,22 @@ def sort_boxes(boxes, labels):
 def encode_single_targets(boxes, labels, pyramid_shape, num_labels):
     """Encode boxes and labels into a pyramid of arrays for one image.
 
-    Encodes each box and label into the arrays representing a single level of
-    the pyramid based on the size of the box.
+    Encodes each box and label into a single level of the pyramid based on the
+    size of the box.
 
     Args:
-        boxes: (tensor) with shape (n, 4) with format (ymin, xmin, ymax, xmax)
-        labels: (tensor) with shape (n,) with class ids
+        boxes: tensor<n, 4> with format (ymin, xmin, ymax, xmax)
+        labels: tensor<n,> with class ids
         pyramid_shape: list of (stride, max_box_side, h, w) sorted in
             descending order by stride
         num_labels: (int) number of labels (ie. class ids)
 
     Returns:
-        (dict) where keys are strides, values are dicts of form
-        {'reg_arr': <tensor with shape (4, h, w)>,
-         'label_arr': <tensor with shape (num_labels, h, w)>,
-         'center_arr': <tensor with shape (1, h, w)>}}
-        with label and center values between 0 and 1
+        list of tuples where each tuple corresponds to a pyramid level
+        tuple is of form (reg_arr, label_arr, center_arr) where
+            - reg_arr is tensor<4, h, w>,
+            - label_arr is tensor<num_labels, h, w>
+            - center_arr is tensor<1, h, w>
     """
     # sort boxes and labels by box area in descending order
     # this is so that we encode smaller boxes later, to give them precedence

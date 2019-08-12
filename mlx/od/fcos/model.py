@@ -105,7 +105,7 @@ class FPN(nn.Module):
         return out
 
 class ConvBlock(nn.Module):
-    """Module containing sequence of conv2d, relu, and batch norm."""
+    """Sequence of conv2d, group norm, and relu."""
     def __init__(self, in_channels, out_channels, kernel_size, padding=0):
         super().__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size,
@@ -121,8 +121,8 @@ class ConvBlock(nn.Module):
 class FCOSHead(nn.Module):
     """Head for FCOS model.
 
-    Outputs reg_arr and label_arr for one level of the pyramid, which can
-    be decoded into boxes and labels.
+    Outputs reg_arr, label_arr, and center_arr for one level of the pyramid,
+    which can be decoded into a BoxList.
     """
     def __init__(self, num_labels, in_channels=256):
         super().__init__()
@@ -160,11 +160,11 @@ class FCOSHead(nn.Module):
                 in the reg_arr and varies across levels of the pyramid.
 
         Returns:
-            (dict) of form {
-                'reg_arr': <tensor with shape (batch_sz, 4, h*, w*)>,
-                'label_arr': <tensor with shape (batch_sz, num_labels, h*, w*>
-            }
-            label_arr contains logits
+            tuple of form (reg_arr, label_arr, center_arr) where
+                - reg_arr is tensor<n, 4, h, w>,
+                - label_arr is tensor<n, num_labels, h, w>
+                - center_arr is tensor<n, 1, h, w>
+            where label_arr and center_arr contain logits
         """
         reg_arr = torch.exp(scale_param * self.reg_conv(self.reg_branch(x)))
         label_branch_arr = self.label_branch(x)
@@ -193,27 +193,23 @@ class FCOS(nn.Module):
     def forward(self, input, targets=None, get_head_out=False):
         """Compute output of FCOS.
 
-        Note: boxes are in (ymin, xmin, ymax, xmax) format with values between
-            0 and h or w. labels are class ids starting at 0.
-
         Args:
-            input: (tensor) batch of images with shape (batch_sz, 3, h, w)
-            targets: (list) of length batch_sz with elements of form
-                {'boxes': <tensor with shape (n, 4)>,
-                 'labels': <tensor with shape (n,)>}
+            input: tensor<n, 3, h, w> with batch of images
+            targets: list<BoxList> of length n with boxes and labels set
         Returns:
-            if targets is None, returns list of length batch_sz with elements of
-            form {'boxes': <tensor with shape (n, 4)>,
-                  'labels': <tensor with shape (n,)>,
-                  'scores': <tensor with shape (n,)>}
-            this returns boxes with score > 0.05. Further filtering based on
-            score should be done before considering the prediction "final".
+            if targets is None, returns list<BoxList> of length n, containing
+            boxes, labels, and scores for boxes with score > 0.05. Further
+            filtering based on score should be done before considering the
+            prediction "final".
 
             if target is a list, returns the losses as dict of form {
                 'reg_loss': <tensor[1]>,
                 'label_loss': <tensor[1]>,
                 'center_loss': <tensor[1]>
             }
+
+            if get_head_out is True, also return a list with the raw output
+            from the heads
         """
         fpn_out = self.fpn(input)
 
