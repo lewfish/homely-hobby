@@ -63,8 +63,6 @@ class FPN(nn.Module):
 
         self.cross_conv4 = nn.Conv2d(
             self.backbone_out['layer4'].shape[1], out_channels, 1)
-        self.out_conv4 = nn.Conv2d(
-            out_channels, out_channels, 3, 1, 1)
 
         self.up_conv5 = nn.Conv2d(
             out_channels, out_channels, 3, 2, 1)
@@ -86,20 +84,20 @@ class FPN(nn.Module):
 
         # c* is cross output, d* is downsampling output
         c4 = self.cross_conv4(self.backbone_out['layer4'])
-        d4 = self.out_conv4(c4)
+        d4 = c4
 
-        u5 = self.up_conv5(d4)
+        u5 = self.up_conv5(c4)
 
         c3 = self.cross_conv3(self.backbone_out['layer3'])
-        d3 = self.out_conv3(c3 + nn.functional.interpolate(d4, c3.shape[2:]))
+        d3 = c3 + nn.functional.interpolate(d4, c3.shape[2:])
 
         c2 = self.cross_conv2(self.backbone_out['layer2'])
-        d2 = self.out_conv2(c2 + nn.functional.interpolate(d3, c2.shape[2:]))
+        d2 = c2 + nn.functional.interpolate(d3, c2.shape[2:])
 
         c1 = self.cross_conv1(self.backbone_out['layer1'])
-        d1 = self.out_conv1(c1 + nn.functional.interpolate(d2, c1.shape[2:]))
+        d1 = c1 + nn.functional.interpolate(d2, c1.shape[2:])
 
-        out = [u5, d4, d3, d2, d1]
+        out = [u5, d4, self.out_conv3(d3), self.out_conv2(d2), self.out_conv1(d1)]
         if self.levels is not None:
             out = [out[l] for l in self.levels]
         return out
