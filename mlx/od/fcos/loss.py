@@ -87,14 +87,13 @@ def fcos_batch_loss(out, targets, pyramid_shape, num_labels):
         out: the output of the heads for the whole pyramid
         targets: list<BoxList> of length n
 
-        the format for both is list of tuples where each tuple corresponds to a
+        the format of out is a list of tuples where each tuple corresponds to a
         pyramid level. tuple is of form (reg_arr, label_arr, center_arr) where
             - reg_arr is tensor<n, 4, h, w>,
             - label_arr is tensor<n, num_labels, h, w>
             - center_arr is tensor<n, 1, h, w>
 
-        and label_arr and center_arr values are probabilities for targets,
-        and logits for output.
+        and label_arr and center_arr values are logits.
 
     Returns:
         dict of form {
@@ -118,9 +117,9 @@ def fcos_batch_loss(out, targets, pyramid_shape, num_labels):
             # (1, H, W) -> (H, W, 1) -> (H*W,)
             center_arrs.append(center_arr.permute((1, 2, 0)).reshape((-1,)))
 
-        targets_reg_arr, targets_label_arr, targets_center_arr = (
-            torch.cat(reg_arrs), torch.cat(label_arrs),
-            torch.cat(center_arrs))
+    targets_reg_arr, targets_label_arr, targets_center_arr = (
+        torch.cat(reg_arrs), torch.cat(label_arrs),
+        torch.cat(center_arrs))
     out_reg_arr, out_label_arr, out_center_arr = flatten_output(out)
 
     pos_indicator = targets_label_arr.sum(1) > 0.0
@@ -129,7 +128,7 @@ def fcos_batch_loss(out, targets, pyramid_shape, num_labels):
     out_center_arr = out_center_arr[pos_indicator]
     targets_center_arr = targets_center_arr[pos_indicator]
 
-    npos = targets_reg_arr.shape[0] + batch_sz
+    npos = targets_reg_arr.shape[0] + 1
     label_loss = focal_loss(out_label_arr, targets_label_arr) / npos
     reg_loss = torch.tensor(0.0, device=label_loss.device)
     center_loss = torch.tensor(0.0, device=label_loss.device)
