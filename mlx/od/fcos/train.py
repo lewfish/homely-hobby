@@ -88,7 +88,8 @@ def train(config_path, opts):
     databunch, full_databunch = build_databunch(cfg, tmp_dir)
     output_dir = setup_output_dir(cfg, tmp_dir)
     print(full_databunch)
-    plot_data(databunch, output_dir)
+    if not cfg.lr_find_mode:
+        plot_data(databunch, output_dir)
 
     # Setup model
     num_labels = databunch.c
@@ -111,7 +112,6 @@ def train(config_path, opts):
 
     if cfg.overfit_mode:
         learn.fit_one_cycle(cfg.solver.num_epochs, cfg.solver.lr, callbacks=callbacks)
-        learn.validate(databunch.train_dl, metrics=metrics)
         plot_dataset = databunch.train_ds
         torch.save(learn.model.state_dict(), last_model_path)
         print('Validating on training set...')
@@ -128,6 +128,13 @@ def train(config_path, opts):
             TrackEpochCallback(learn),
         ]
         callbacks.extend(extra_callbacks)
+        if cfg.lr_find_mode:
+            learn.lr_find()
+            learn.recorder.plot(suggestion=True, return_fig=True)
+            lr = learn.recorder.min_grad_lr
+            print('lr_find() found lr: {}'.format(lr))
+            exit()
+
         learn.fit_one_cycle(cfg.solver.num_epochs, cfg.solver.lr, callbacks=callbacks)
         plot_dataset = databunch.valid_ds
         print('Validating on full validation set...')

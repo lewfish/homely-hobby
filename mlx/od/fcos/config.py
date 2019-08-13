@@ -26,6 +26,7 @@ cfg.data.num_workers = 4
 
 cfg.test_mode = False
 cfg.overfit_mode = False
+cfg.lr_find_mode = False
 cfg.output_uri = ''
 cfg.base_uri = ''
 
