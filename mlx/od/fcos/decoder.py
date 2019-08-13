@@ -64,19 +64,35 @@ def decode_single_output(output, pyramid_shape, score_thresh=0.05):
         boxlists.append(boxlist)
     return BoxList.cat(boxlists)
 
-def decode_batch_output(head_out, pyramid_shape, img_height, img_width,
+def decode_batch_output(output, pyramid_shape, img_height, img_width,
                         iou_thresh=0.5):
+    """Decode output for batch of images.
+
+    Args:
+        output: list of tuples where each tuple corresponds to a pyramid level
+            tuple is of form (reg_arr, label_arr, center_arr) where
+                - reg_arr is tensor<n, 4, h, w>,
+                - label_arr is tensor<n, num_labels, h, w>
+                - center_arr is tensor<n, 1, h, w>
+            and label_arr and center_arr are logits
+        pyramid_shape:
+        img_height:
+        img_width:
+        iou_thresh: (float) iou threshold passed to NMS
+
+    Returns:
+        list of n BoxLists
+    """
     boxlists = []
-    batch_sz = head_out[0][0].shape[0]
+    batch_sz = output[0][0].shape[0]
     for i in range(batch_sz):
         single_head_out = []
-        for level, level_head_out in enumerate(head_out):
-            # Convert logits in label_arr and center_arr
-            # to probabilities since decode expects probabilities.
+        for level, (reg_arr, label_arr, center_arr) in enumerate(output):
+            # Convert logits in label_arr and center_arr to probabilities.
             single_head_out.append((
-                level_head_out[0][i],
-                torch.sigmoid(level_head_out[1][i]),
-                torch.sigmoid(level_head_out[2][i])))
+                reg_arr[i],
+                torch.sigmoid(label_arr[i]),
+                torch.sigmoid(center_arr[i])))
         boxlist = decode_single_output(single_head_out, pyramid_shape)
         boxlist = BoxList(
             boxlist.boxes, boxlist.labels, boxlist.scores * boxlist.centerness,
