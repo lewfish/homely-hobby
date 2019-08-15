@@ -5,7 +5,7 @@ import tempfile
 import numpy as np
 from fastai.vision import (
    URLs, get_annotations, ObjectItemList, untar_data, imagenet_stats,
-   flip_affine, bb_pad_collate, ResizeMethod, imagenet_stats)
+   flip_affine, bb_pad_collate, ResizeMethod, imagenet_stats, get_transforms)
 
 from mlx.filesystem.utils import (
     get_local_path, make_dir, sync_to_dir, sync_from_dir, zipdir, unzip,
@@ -97,7 +97,8 @@ def build_databunch(cfg, tmp_dir):
         src = src.label_from_func(get_y_func, classes=classes)
         train_transforms, val_transforms = [], []
         if not cfg.overfit_mode:
-            train_transforms = [flip_affine(p=0.5)]
+            #train_transforms = [flip_affine(p=0.5)]
+            train_transforms = get_transforms()[0]
         src = src.transform(
             tfms=[train_transforms, val_transforms], size=img_sz, tfm_y=True,
             resize_method=ResizeMethod.SQUISH)
