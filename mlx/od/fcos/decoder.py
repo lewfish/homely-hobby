@@ -1,6 +1,8 @@
 import torch
 import math
 
+from mlx.od.fcos.boxlist import BoxList
+
 def decode_level_output(reg_arr, label_arr, center_arr, stride, score_thresh=0.05):
     """Decode output of head for one level of the pyramid for one image.
 
@@ -16,7 +18,7 @@ def decode_level_output(reg_arr, label_arr, center_arr, stride, score_thresh=0.0
             if a box is present at a cell
 
     Returns:
-        (boxes, labels, scores)
+        BoxList
     """
     device = reg_arr.device
     h, w = reg_arr.shape[1:]
@@ -36,36 +38,66 @@ def decode_level_output(reg_arr, label_arr, center_arr, stride, score_thresh=0.0
     labels = labels.reshape(-1)
     scores = scores.reshape(-1)
     centerness = center_arr.reshape(-1)
-    keep_inds = scores > score_thresh
-    return (boxes[keep_inds, :], labels[keep_inds], scores[keep_inds],
-            centerness[keep_inds])
+    return BoxList(boxes, labels, scores, centerness).score_filter(score_thresh)
 
-def decode_output(output, score_thresh=0.05):
+def decode_single_output(output, pyramid_shape, score_thresh=0.05):
     """Decode output of heads for all levels of pyramid for one image.
 
     Args:
-        output: (dict) where keys are strides and values are dicts of form
-            {'reg_arr': <tensor of shape (4, h, w)>,
-             'label_arr': <tensor of shape (num_labels, h, w)>,
-             'center_arr': <tensor of shape (1, h, w)>}
-            and label and center values are between 0 and 1
+        output: list of tuples where each tuple corresponds to a pyramid level
+            tuple is of form (reg_arr, label_arr, center_arr) where
+                - reg_arr is tensor<4, h, w>,
+                - label_arr is tensor<num_labels, h, w>
+                - center_arr is tensor<1, h, w>
+            and label_arr and center_arr are probabilities
         score_thresh: (float) probability score threshold used to determine
             if a box is present at a cell
 
     Returns:
-        (boxes, labels, scores)
+        BoxList
     """
-    all_boxes, all_labels, all_scores, all_centerness = [], [], [], []
-    for stride, level_out in output.items():
-        reg_arr = level_out['reg_arr']
-        label_arr = level_out['label_arr']
-        center_arr = level_out['center_arr']
-        boxes, labels, scores, centerness = decode_level_output(
-            reg_arr, label_arr, center_arr, stride, score_thresh=score_thresh)
-        all_boxes.append(boxes)
-        all_labels.append(labels)
-        all_scores.append(scores)
-        all_centerness.append(centerness)
+    boxlists = []
+    for level, level_out in enumerate(output):
+        stride = pyramid_shape[level][0]
+        boxlist = decode_level_output(
+            *level_out, stride, score_thresh=score_thresh)
+        boxlists.append(boxlist)
+    return BoxList.cat(boxlists)
 
-    return (torch.cat(all_boxes), torch.cat(all_labels), torch.cat(all_scores),
-            torch.cat(all_centerness))
+def decode_batch_output(output, pyramid_shape, img_height, img_width,
+                        iou_thresh=0.5):
+    """Decode output for batch of images.
+
+    Args:
+        output: list of tuples where each tuple corresponds to a pyramid level
+            tuple is of form (reg_arr, label_arr, center_arr) where
+                - reg_arr is tensor<n, 4, h, w>,
+                - label_arr is tensor<n, num_labels, h, w>
+                - center_arr is tensor<n, 1, h, w>
+            and label_arr and center_arr are logits
+        pyramid_shape:
+        img_height:
+        img_width:
+        iou_thresh: (float) iou threshold passed to NMS
+
+    Returns:
+        list of n BoxLists
+    """
+    boxlists = []
+    batch_sz = output[0][0].shape[0]
+    for i in range(batch_sz):
+        single_head_out = []
+        for level, (reg_arr, label_arr, center_arr) in enumerate(output):
+            # Convert logits in label_arr and center_arr to probabilities.
+            single_head_out.append((
+                reg_arr[i],
+                torch.sigmoid(label_arr[i]),
+                torch.sigmoid(center_arr[i])))
+        boxlist = decode_single_output(single_head_out, pyramid_shape)
+        boxlist = BoxList(
+            boxlist.boxes, boxlist.labels, boxlist.scores * boxlist.centerness,
+            boxlist.centerness)
+        boxlist = boxlist.clamp(img_height, img_width)
+        boxlist = boxlist.nms(iou_thresh=iou_thresh)
+        boxlists.append(boxlist)
+    return boxlists

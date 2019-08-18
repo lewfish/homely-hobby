@@ -8,6 +8,7 @@ from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
 from mlx.filesystem.utils import json_to_file
+from mlx.od.fcos.boxlist import to_box_pixel
 
 def get_coco_gt(targets, num_labels):
     images = []
@@ -21,7 +22,8 @@ def get_coco_gt(targets, num_labels):
             'width': 1000,
             'file_name': '{}.png'.format(img_id)
         })
-        for box, label in zip(target['boxes'], target['labels']):
+        boxes, labels = target
+        for box, label in zip(*target):
             box = box.float().tolist()
             label = label.item()
             annotations.append({
@@ -45,7 +47,7 @@ def get_coco_gt(targets, num_labels):
 def get_coco_preds(outputs):
     preds = []
     for img_id, output in enumerate(outputs, 1):
-        for box, label, score in zip(output['boxes'], output['labels'], output['scores']):
+        for box, label, score in zip(*output):
             box = box.float().tolist()
             label = label.item()
             score = score.item()
@@ -118,11 +120,9 @@ class CocoMetric(Callback):
         for batch_boxes, batch_labels in self.targets:
             for boxes, labels in zip(batch_boxes, batch_labels):
                 non_pad_inds = labels != 0
-                boxes = ((boxes + 1.0) / 2.0)
-                boxes = boxes * torch.tensor([[self.h, self.w, self.h, self.w]]).to(
-                    device=boxes.device, dtype=torch.float)
-                my_targets.append({
-                    'boxes': boxes[non_pad_inds, :],
-                    'labels': labels[non_pad_inds]})
-        metric = compute_coco_eval(self.outputs, my_targets, self.num_labels)
+                boxes = to_box_pixel(boxes, self.h, self.w)
+                my_targets.append((boxes[non_pad_inds, :], labels[non_pad_inds]))
+
+        my_outputs = [(boxlist.boxes, boxlist.labels, boxlist.scores) for boxlist in self.outputs]
+        metric = compute_coco_eval(my_outputs, my_targets, self.num_labels)
         return add_metrics(last_metrics, metric)

@@ -28,37 +28,17 @@ from mlx.od.fcos.plot import plot_preds, plot_data
 from mlx.od.fcos.callbacks import (
     MyCSVLogger, SyncCallback, TensorboardLogger,
     SubLossMetric, MySaveModelCallback)
-from mlx.od.fcos.data import get_databunch, setup_output
-from mlx.batch_utils import submit_job
-from mlx.filesystem.utils import (
-    make_dir, sync_to_dir, zipdir, unzip, download_if_needed)
+from mlx.od.fcos.data import setup_output_dir, build_databunch
+from mlx.od.fcos.config import load_config
+from mlx.od.fcos.boxlist import BoxList, to_box_pixel
+from mlx.filesystem.utils import sync_to_dir
 
-def run_on_batch(dataset_name, test, overfit, debug, profile):
-    job_name = 'mlx_train_fcos-' + str(uuid.uuid4())
-    job_def = 'lewfishPyTorchCustomGpuJobDefinition'
-    job_queue = 'lewfishRasterVisionGpuJobQueue'
-    cmd_list = ['python', '-m', 'mlx.od.fcos.train', dataset_name, '--s3-data']
-
-    if debug:
-        cmd_list = [
-            'python', '-m', 'ptvsd', '--host', '0.0.0.0', '--port', '6006',
-            '--wait', '-m', 'mlx.od.fcos.train', dataset_name, '--s3-data']
-
-    if profile:
-        cmd_list = ['kernprof', '-v', '-l', '/opt/src/mlx/od/fcos/train.py',
-                    dataset_name, '--s3-data']
-
-    if test:
-        cmd_list.append('--test')
-    if overfit:
-        cmd_list.append('--overfit')
-    submit_job(job_name, job_def, job_queue, cmd_list, attempts=5)
-    exit()
 
 # Modified from fastai to handle model which only computes loss when targets
 # are passed in, and only computes output otherwise. This should run faster
 # thanks to not having to run the decoder and NMS during training, and not
 # computing the loss for the validation which is not a great metric anyway.
+# This also converts the input format.
 def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None,
                opt:OptOptimizer=None,
                cb_handler:Optional[CallbackHandler]=None)->Tuple[Union[Tensor,int,float,str]]:
@@ -72,16 +52,8 @@ def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None
     for i in range(batch_sz):
         boxes = yb[0][i]
         labels = yb[1][i]
-        # convert from (ymin, xmin, ymax, xmax) in range [-1,1] to
-        # range [0, h) or [0, w)
-        h, w = images[i].shape[1:]
-        boxes = ((boxes + 1.0) / 2.0) * torch.tensor([[h, w, h, w]]).to(
-            device=device, dtype=torch.float)
-
-        targets.append({
-            'boxes': boxes,
-            'labels': labels
-        })
+        boxes = to_box_pixel(boxes, *images[0].shape[1:3])
+        targets.append(BoxList(boxes, labels))
 
     out = None
     loss = torch.Tensor([0.0]).to(device=device)
@@ -103,41 +75,25 @@ def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None
     return loss.detach().cpu()
 
 @click.command()
-@click.argument('dataset')
-@click.option('--test', is_flag=True, help='Run small test experiment')
-@click.option('--overfit', is_flag=True, help='Run overfitting experiment')
-@click.option('--s3-data', is_flag=True, help='Use data and store results on S3')
-@click.option('--batch', is_flag=True, help='Submit Batch job for full experiment')
-@click.option('--debug', is_flag=True, help='Run via debugger')
-@click.option('--profile', is_flag=True, help='Run via profiler')
-def main(dataset, test, overfit, s3_data, batch, debug, profile):
-    if batch:
-        run_on_batch(dataset, test, overfit, debug, profile)
+@click.argument('config_path')
+@click.argument('opts', nargs=-1)
+def train(config_path, opts):
+    tmp_dir_obj = tempfile.TemporaryDirectory()
+    tmp_dir = tmp_dir_obj.name
 
-    # Setup options
-    backbone_arch = 'resnet18'
-    levels = [1]
-    lr = 1e-4
-    num_epochs = 100
-    sync_interval = 2
-
-    if overfit:
-        num_epochs = 500
-        sync_interval = 1000
-        lr = 1e-4
-
-    if test:
-        num_epochs = 1
+    cfg = load_config(config_path, opts)
+    print(cfg)
 
     # Setup data
-    databunch, full_databunch = get_databunch(dataset, test, overfit)
-    output_dir, output_uri = setup_output(dataset, s3_data)
+    databunch, full_databunch = build_databunch(cfg, tmp_dir)
+    output_dir = setup_output_dir(cfg, tmp_dir)
     print(full_databunch)
-    plot_data(databunch, output_dir)
+    if not cfg.lr_find_mode:
+        plot_data(databunch, output_dir)
 
     # Setup model
     num_labels = databunch.c
-    model = FCOS(backbone_arch, num_labels, levels=levels)
+    model = FCOS(cfg.model.backbone_arch, num_labels, levels=cfg.model.levels)
     metrics = [CocoMetric(num_labels)]
     learn = Learner(databunch, model, path=output_dir, metrics=metrics)
     fastai.basic_train.loss_batch = loss_batch
@@ -150,17 +106,20 @@ def main(dataset, test, overfit, s3_data, batch, debug, profile):
         SubLossMetric(learn)
     ]
 
-    if s3_data:
-        callbacks.append(SyncCallback(output_dir, output_uri, sync_interval))
+    if cfg.output_uri.startswith('s3://'):
+        callbacks.append(
+            SyncCallback(output_dir, cfg.output_uri, cfg.solver.sync_interval))
 
-    if overfit:
-        learn.fit(num_epochs, lr, callbacks=callbacks)
-        learn.validate(databunch.train_dl, metrics=metrics)
+    if cfg.overfit_mode:
+        learn.fit_one_cycle(cfg.solver.num_epochs, cfg.solver.lr, callbacks=callbacks)
         plot_dataset = databunch.train_ds
         torch.save(learn.model.state_dict(), last_model_path)
+        print('Validating on training set...')
+        learn.validate(full_databunch.train_dl, metrics=metrics)
     else:
         tb_logger = TensorboardLogger(learn, 'run')
-        tb_logger.set_extra_args(['label_loss', 'reg_loss', 'center_loss'], overfit)
+        tb_logger.set_extra_args(
+            ['label_loss', 'reg_loss', 'center_loss'], cfg.overfit_mode)
 
         extra_callbacks = [
             MySaveModelCallback(
@@ -169,15 +128,22 @@ def main(dataset, test, overfit, s3_data, batch, debug, profile):
             TrackEpochCallback(learn),
         ]
         callbacks.extend(extra_callbacks)
-        learn.fit_one_cycle(num_epochs, lr, callbacks=callbacks)
+        if cfg.lr_find_mode:
+            learn.lr_find()
+            learn.recorder.plot(suggestion=True, return_fig=True)
+            lr = learn.recorder.min_grad_lr
+            print('lr_find() found lr: {}'.format(lr))
+            exit()
+
+        learn.fit_one_cycle(cfg.solver.num_epochs, cfg.solver.lr, callbacks=callbacks)
         plot_dataset = databunch.valid_ds
         print('Validating on full validation set...')
         learn.validate(full_databunch.valid_dl, metrics=metrics)
 
     print('Plotting predictions...')
     plot_preds(plot_dataset, learn.model, databunch.classes, output_dir)
-    if s3_data:
-        sync_to_dir(output_dir, output_uri)
+    if cfg.output_uri.startswith('s3://'):
+        sync_to_dir(output_dir, cfg.output_uri)
 
 if __name__ == '__main__':
-    main()
+    train()
