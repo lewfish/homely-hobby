@@ -107,7 +107,7 @@ def fcos_batch_loss(out, targets, pyramid_shape, num_labels):
     reg_arrs, label_arrs, center_arrs = [], [], []
     for single_targets in targets:
         single_targets = encode_single_targets(
-            single_targets.boxes, single_targets.labels, pyramid_shape,
+            single_targets.boxes, single_targets.get_field('labels'), pyramid_shape,
             num_labels)
         for reg_arr, label_arr, center_arr in single_targets:
             # (4, H, W) -> (H, W, 4) -> (H*W, 4)
@@ -137,5 +137,7 @@ def fcos_batch_loss(out, targets, pyramid_shape, num_labels):
         center_loss = nn.functional.binary_cross_entropy_with_logits(
             out_center_arr, targets_center_arr, reduction='mean')
 
-    loss_dict = {'label_loss': label_loss, 'reg_loss': reg_loss, 'center_loss': center_loss}
+    total_loss = label_loss + reg_loss + center_loss
+    loss_dict = {'total_loss': total_loss, 'label_loss': label_loss,
+                 'reg_loss': reg_loss, 'center_loss': center_loss}
     return loss_dict

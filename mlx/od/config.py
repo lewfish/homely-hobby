@@ -5,9 +5,16 @@ from yacs.config import CfgNode as CN
 
 cfg = CN()
 
+
 cfg.model = CN()
-cfg.model.backbone_arch = "resnet18"
-cfg.model.levels = [2]
+cfg.model.type = "fcos"
+
+cfg.model.fcos = CN()
+cfg.model.fcos.backbone_arch = "resnet18"
+cfg.model.fcos.levels = [2]
+
+cfg.model.centernet = CN()
+cfg.model.centernet.backbone_arch = "resnet18"
 
 cfg.solver = CN()
 cfg.solver.lr = 1e-4

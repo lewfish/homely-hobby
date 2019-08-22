@@ -3,7 +3,7 @@ import unittest
 import torch
 
 from mlx.od.fcos.model import FPN, FCOSHead, FCOS
-from mlx.od.fcos.boxlist import BoxList
+from mlx.od.boxlist import BoxList
 
 class TestFPN(unittest.TestCase):
     def test_fpn(self):
@@ -46,8 +46,8 @@ class TestFCOS(unittest.TestCase):
         boxlist = boxlists[0]
         num_boxes = boxlist.boxes.shape[0]
         self.assertListEqual(list(boxlist.boxes.shape), [num_boxes, 4])
-        self.assertListEqual(list(boxlist.labels.shape), [num_boxes])
-        self.assertListEqual(list(boxlist.scores.shape), [num_boxes])
+        self.assertListEqual(list(boxlist.get_field('labels').shape), [num_boxes])
+        self.assertListEqual(list(boxlist.get_field('scores').shape), [num_boxes])
 
     def test_fcos_with_targets(self):
         h, w = 64, 64
@@ -60,7 +60,7 @@ class TestFCOS(unittest.TestCase):
             [8, 8, 12, 12]
         ])
         labels = torch.tensor([0, 1])
-        targets = [BoxList(boxes, labels)]
+        targets = [BoxList(boxes, labels=labels)]
 
         loss_dict = model(x, targets)
         self.assertTrue('label_loss' in loss_dict)
@@ -78,7 +78,7 @@ class TestFCOS(unittest.TestCase):
             [16, 16, 32, 32]
         ])
         labels = torch.tensor([0, 1])
-        targets = [BoxList(boxes, labels)]
+        targets = [BoxList(boxes, labels=labels)]
 
         model.train()
         model.zero_grad()
