@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from mlx.od.fcos.metrics import compute_coco_eval
+from mlx.od.metrics import compute_coco_eval
 
 class TestCocoEval(unittest.TestCase):
     def test_coco_eval(self):

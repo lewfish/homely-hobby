@@ -5,7 +5,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from mlx.od.fcos.nms import compute_nms
+from mlx.od.nms import compute_nms
 
 def time_nms():
     all_num_boxes = np.arange(20, 1000, 100)

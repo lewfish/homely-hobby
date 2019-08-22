@@ -24,9 +24,9 @@ class TestDecodeLevelOutput(unittest.TestCase):
         boxlist = decode_level_output(
             reg_arr, label_arr, center_arr, stride, score_thresh=score_thresh)
 
-        self.assertEqual(make_tuple_set(boxlist.boxes.int(), boxlist.labels.int()),
+        self.assertEqual(make_tuple_set(boxlist.boxes.int(), boxlist.get_field('labels').int()),
                          make_tuple_set(exp_boxes, exp_labels))
-        self.assertTrue(torch.all(boxlist.scores == 1))
+        self.assertTrue(torch.all(boxlist.get_field('scores') == 1))
 
     def test_decode1(self):
         stride = 4
@@ -109,8 +109,8 @@ class TestDecodeLevelOutput(unittest.TestCase):
 
         exp_labels = torch.tensor([0, 0])
         exp_centerness = torch.tensor([0.1, 0.2])
-        self.assertTrue(boxlist.labels.equal(exp_labels))
-        self.assertTrue(boxlist.centerness.equal(exp_centerness))
+        self.assertTrue(boxlist.get_field('labels').equal(exp_labels))
+        self.assertTrue(boxlist.get_field('centerness').equal(exp_centerness))
 
 class TestDecodeSingleOutput(unittest.TestCase):
     def encode_decode_output(self, pyramid_shape, exp_boxes, exp_labels):
@@ -122,9 +122,9 @@ class TestDecodeSingleOutput(unittest.TestCase):
         boxlist = decode_single_output(
             targets, pyramid_shape, score_thresh=score_thresh)
 
-        self.assertEqual(make_tuple_set(boxlist.boxes.int(), boxlist.labels.int()),
+        self.assertEqual(make_tuple_set(boxlist.boxes.int(), boxlist.get_field('labels').int()),
                          make_tuple_set(exp_boxes, exp_labels))
-        self.assertTrue(torch.all(boxlist.scores == 1))
+        self.assertTrue(torch.all(boxlist.get_field('scores') == 1))
 
     def test_decode(self):
         pyramid_shape = [
@@ -193,9 +193,9 @@ class TestDecodeBatchOutput(unittest.TestCase):
         boxlists = decode_batch_output(
             batch_targets, pyramid_shape, img_height, img_width)
         for ind, boxlist in enumerate(boxlists):
-            self.assertEqual(make_tuple_set(boxlist.boxes.int(), boxlist.labels.int()),
+            self.assertEqual(make_tuple_set(boxlist.boxes.int(), boxlist.get_field('labels').int()),
                              make_tuple_set(exp_boxes[ind], exp_labels[ind]))
-            self.assertTrue(torch.all(boxlist.scores == 1))
+            self.assertTrue(torch.all(boxlist.get_field('scores') == 1))
 
 if __name__ == '__main__':
     unittest.main()

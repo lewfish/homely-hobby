@@ -22,17 +22,17 @@ from fastai.callbacks import TrackEpochCallback
 from fastai.core import ifnone
 from fastai.torch_core import OptLossFunc, OptOptimizer, Optional, Tuple, Union
 
-from mlx.od.fcos.model import FCOS
-from mlx.od.fcos.metrics import CocoMetric
-from mlx.od.fcos.plot import plot_preds, plot_data
-from mlx.od.fcos.callbacks import (
+from mlx.od.metrics import CocoMetric
+from mlx.od.callbacks import (
     MyCSVLogger, SyncCallback, TensorboardLogger,
     SubLossMetric, MySaveModelCallback)
-from mlx.od.fcos.data import setup_output_dir, build_databunch
-from mlx.od.fcos.config import load_config
-from mlx.od.fcos.boxlist import BoxList, to_box_pixel
+from mlx.od.data import setup_output_dir, build_databunch
+from mlx.od.config import load_config
+from mlx.od.boxlist import BoxList, to_box_pixel
+from mlx.od.model import build_model
 from mlx.filesystem.utils import sync_to_dir
-
+from mlx.od.fcos.model import FCOS
+from mlx.od.plot import build_plotter
 
 # Modified from fastai to handle model which only computes loss when targets
 # are passed in, and only computes output otherwise. This should run faster
@@ -53,13 +53,13 @@ def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None
         boxes = yb[0][i]
         labels = yb[1][i]
         boxes = to_box_pixel(boxes, *images[0].shape[1:3])
-        targets.append(BoxList(boxes, labels))
+        targets.append(BoxList(boxes, labels=labels))
 
     out = None
     loss = torch.Tensor([0.0]).to(device=device)
     if model.training:
         loss_dict = model(images, targets)
-        loss = loss_dict['label_loss'] + loss_dict['reg_loss'] + loss_dict['center_loss']
+        loss = loss_dict['total_loss']
         cb_handler.state_dict['loss_dict'] = loss_dict
     else:
         out = model(images)
@@ -88,12 +88,14 @@ def train(config_path, opts):
     databunch, full_databunch = build_databunch(cfg, tmp_dir)
     output_dir = setup_output_dir(cfg, tmp_dir)
     print(full_databunch)
+
+    plotter = build_plotter(cfg)
     if not cfg.lr_find_mode:
-        plot_data(databunch, output_dir)
+        plotter.plot_data(databunch, output_dir)
 
     # Setup model
     num_labels = databunch.c
-    model = FCOS(cfg.model.backbone_arch, num_labels, levels=cfg.model.levels)
+    model = build_model(cfg, num_labels)
     metrics = [CocoMetric(num_labels)]
     learn = Learner(databunch, model, path=output_dir, metrics=metrics)
     fastai.basic_train.loss_batch = loss_batch
@@ -103,7 +105,7 @@ def train(config_path, opts):
     # Train model
     callbacks = [
         MyCSVLogger(learn, filename='log'),
-        SubLossMetric(learn)
+        SubLossMetric(learn, model.subloss_names)
     ]
 
     if cfg.output_uri.startswith('s3://'):
@@ -119,7 +121,7 @@ def train(config_path, opts):
     else:
         tb_logger = TensorboardLogger(learn, 'run')
         tb_logger.set_extra_args(
-            ['label_loss', 'reg_loss', 'center_loss'], cfg.overfit_mode)
+            model.subloss_names, cfg.overfit_mode)
 
         extra_callbacks = [
             MySaveModelCallback(
@@ -141,7 +143,7 @@ def train(config_path, opts):
         learn.validate(full_databunch.valid_dl, metrics=metrics)
 
     print('Plotting predictions...')
-    plot_preds(plot_dataset, learn.model, databunch.classes, output_dir)
+    plotter.make_debug_plots(plot_dataset, learn.model, databunch.classes, output_dir)
     if cfg.output_uri.startswith('s3://'):
         sync_to_dir(output_dir, cfg.output_uri)
 

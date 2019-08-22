@@ -80,33 +80,29 @@ class MyCSVLogger(CSVLogger):
 
 class SubLossMetric(LearnerCallback):
     _order=-20 # Needs to run before the recorder
-    def __init__(self, learn):
+    def __init__(self, learn, subloss_names):
         super().__init__(learn)
+        self.subloss_names = subloss_names
 
     def on_train_begin(self, **kwargs):
-        self.learn.recorder.add_metric_names(['label_loss', 'reg_loss', 'center_loss'])
+        self.learn.recorder.add_metric_names(self.subloss_names)
 
     def on_batch_end(self, train, **kwargs):
         if train:
             loss_dict = kwargs['loss_dict']
-            self.label_loss += loss_dict['label_loss'].detach().cpu().item()
-            self.reg_loss += loss_dict['reg_loss'].detach().cpu().item()
-            self.center_loss += loss_dict['center_loss'].detach().cpu().item()
+            for name in self.subloss_names:
+                self.sublosses[name] += loss_dict[name].detach().cpu().item()
             self.num_batches += 1
 
     def on_epoch_begin(self, **kwargs):
-        self.label_loss = 0.
-        self.reg_loss = 0.
-        self.center_loss = 0.
+        self.sublosses = dict(zip(self.subloss_names, [0.] * len(self.subloss_names)))
         self.num_batches = 0
 
     def on_epoch_end(self, last_metrics, **kwargs):
-        self.label_loss /= self.num_batches
-        self.reg_loss /= self.num_batches
-        self.center_loss /= self.num_batches
-
-        return add_metrics(
-            last_metrics, [self.label_loss, self.reg_loss, self.center_loss])
+        for k, v in self.sublosses.items():
+            self.sublosses[k] = v / self.num_batches
+        sublosses = [self.sublosses[name] for name in self.subloss_names]
+        return add_metrics(last_metrics, sublosses)
 
 # This code was adapted from
 # https://github.com/Pendar2/fastai-tensorboard-callback/blob/master/fastai_tensorboard_callback/tensorboard_cb.py

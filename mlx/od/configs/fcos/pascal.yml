@@ -1,6 +1,8 @@
 model:
-  backbone_arch: "resnet18"
-  levels: [2]
+  type: "fcos"
+  fcos:
+    backbone_arch: "resnet18"
+    levels: [2]
 solver:
   lr: 1e-4
   num_epochs: 25

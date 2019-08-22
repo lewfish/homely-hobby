@@ -3,7 +3,7 @@ import unittest
 import shapely
 import numpy as np
 
-from mlx.od.fcos.nms import compute_nms, compute_iou
+from mlx.od.nms import compute_nms, compute_iou
 
 class TestNMS(unittest.TestCase):
     def test_iou(self):

@@ -1,7 +1,7 @@
 import torch
 import math
 
-from mlx.od.fcos.boxlist import BoxList
+from mlx.od.boxlist import BoxList
 
 def decode_level_output(reg_arr, label_arr, center_arr, stride, score_thresh=0.05):
     """Decode output of head for one level of the pyramid for one image.
@@ -38,7 +38,7 @@ def decode_level_output(reg_arr, label_arr, center_arr, stride, score_thresh=0.0
     labels = labels.reshape(-1)
     scores = scores.reshape(-1)
     centerness = center_arr.reshape(-1)
-    return BoxList(boxes, labels, scores, centerness).score_filter(score_thresh)
+    return BoxList(boxes, labels=labels, scores=scores, centerness=centerness).score_filter(score_thresh)
 
 def decode_single_output(output, pyramid_shape, score_thresh=0.05):
     """Decode output of heads for all levels of pyramid for one image.
@@ -95,8 +95,9 @@ def decode_batch_output(output, pyramid_shape, img_height, img_width,
                 torch.sigmoid(center_arr[i])))
         boxlist = decode_single_output(single_head_out, pyramid_shape)
         boxlist = BoxList(
-            boxlist.boxes, boxlist.labels, boxlist.scores * boxlist.centerness,
-            boxlist.centerness)
+            boxlist.boxes, labels=boxlist.get_field('labels'),
+            scores=boxlist.get_field('scores') * boxlist.get_field('centerness'),
+            centerness=boxlist.get_field('centerness'))
         boxlist = boxlist.clamp(img_height, img_width)
         boxlist = boxlist.nms(iou_thresh=iou_thresh)
         boxlists.append(boxlist)

@@ -187,6 +187,7 @@ class FCOS(nn.Module):
         num_scales = len(self.fpn.strides)
         self.scale_params = nn.Parameter(torch.ones((num_scales,)))
         self.head = FCOSHead(num_labels, in_channels=out_channels)
+        self.subloss_names = ['reg_loss', 'label_loss', 'center_loss']
 
     def forward(self, input, targets=None, get_head_out=False):
         """Compute output of FCOS.

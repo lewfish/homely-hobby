@@ -8,7 +8,7 @@ from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
 from mlx.filesystem.utils import json_to_file
-from mlx.od.fcos.boxlist import to_box_pixel
+from mlx.od.boxlist import to_box_pixel
 
 def get_coco_gt(targets, num_labels):
     images = []
@@ -123,6 +123,8 @@ class CocoMetric(Callback):
                 boxes = to_box_pixel(boxes, self.h, self.w)
                 my_targets.append((boxes[non_pad_inds, :], labels[non_pad_inds]))
 
-        my_outputs = [(boxlist.boxes, boxlist.labels, boxlist.scores) for boxlist in self.outputs]
+        my_outputs = [
+            (boxlist.boxes, boxlist.get_field('labels'), boxlist.get_field('scores'))
+            for boxlist in self.outputs]
         metric = compute_coco_eval(my_outputs, my_targets, self.num_labels)
         return add_metrics(last_metrics, metric)
