@@ -32,7 +32,7 @@ class CenterNet(nn.Module):
         super().__init__()
         self.num_labels = num_labels
         self.stride = 1
-        self.subloss_names = ['keypoint_loss', 'reg_loss']
+        self.subloss_names = ['total_loss', 'keypoint_loss', 'reg_loss']
 
         backbone_arch = getattr(models, backbone_arch)
         body = create_body(backbone_arch, pretrained)
