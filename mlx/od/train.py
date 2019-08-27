@@ -1,78 +1,58 @@
-import json
-import uuid
-from os.path import join, isdir, dirname
-import shutil
+from os.path import join
 import tempfile
-import os
+from collections import defaultdict
 
-import numpy as np
 import click
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import fastai
-from fastai.vision import (
-    get_annotations, ObjectItemList, get_transforms,
-    bb_pad_collate, URLs, untar_data, imagenet_stats, flip_affine)
-from fastai.basic_train import Learner
 import torch
-from torch import nn, Tensor
-from fastai.callback import CallbackHandler
-from fastai.callbacks import TrackEpochCallback
-from fastai.core import ifnone
-from fastai.torch_core import OptLossFunc, OptOptimizer, Optional, Tuple, Union
 
-from mlx.od.metrics import CocoMetric
-from mlx.od.callbacks import (
-    MyCSVLogger, SyncCallback, TensorboardLogger,
-    SubLossMetric, MySaveModelCallback)
+from mlx.filesystem.utils import sync_to_dir
+from mlx.od.metrics import compute_coco_eval
 from mlx.od.data import setup_output_dir, build_databunch
 from mlx.od.config import load_config
-from mlx.od.boxlist import BoxList, to_box_pixel
 from mlx.od.model import build_model
-from mlx.filesystem.utils import sync_to_dir
-from mlx.od.fcos.model import FCOS
 from mlx.od.plot import build_plotter
+from mlx.od.optimizer import build_optimizer
 
-# Modified from fastai to handle model which only computes loss when targets
-# are passed in, and only computes output otherwise. This should run faster
-# thanks to not having to run the decoder and NMS during training, and not
-# computing the loss for the validation which is not a great metric anyway.
-# This also converts the input format.
-def loss_batch(model:nn.Module, xb:Tensor, yb:Tensor, loss_func:OptLossFunc=None,
-               opt:OptOptimizer=None,
-               cb_handler:Optional[CallbackHandler]=None)->Tuple[Union[Tensor,int,float,str]]:
-    "Calculate loss and metrics for a batch, call out to callbacks as necessary."
-    cb_handler = ifnone(cb_handler, CallbackHandler())
-    device = xb.device
-    # Translate from fastai box format to torchvision.
-    batch_sz = len(xb)
-    images = xb
-    targets = []
-    for i in range(batch_sz):
-        boxes = yb[0][i]
-        labels = yb[1][i]
-        boxes = to_box_pixel(boxes, *images[0].shape[1:3])
-        targets.append(BoxList(boxes, labels=labels))
+def train_epoch(cfg, model, device, dl, opt, epoch):
+    model.train()
+    train_loss = defaultdict(lambda: 0.0)
+    num_samples = 0
 
-    out = None
-    loss = torch.Tensor([0.0]).to(device=device)
-    if model.training:
-        loss_dict = model(images, targets)
-        loss = loss_dict['total_loss']
-        cb_handler.state_dict['loss_dict'] = loss_dict
-    else:
-        out = model(images)
+    for batch_idx, (x, y) in enumerate(dl):
+        x = x.to(device)
+        y = [_y.to(device) for _y in y]
 
-    out = cb_handler.on_loss_begin(out)
+        opt.zero_grad()
+        loss_dict = model(x, y)
+        loss_dict['total_loss'].backward()
+        opt.step()
 
-    if opt is not None:
-        loss,skip_bwd = cb_handler.on_backward_begin(loss)
-        if not skip_bwd:                     loss.backward()
-        if not cb_handler.on_backward_end(): opt.step()
-        if not cb_handler.on_step_end():     opt.zero_grad()
+        for k, v in loss_dict.items():
+            train_loss[k] += v.item()
 
-    return loss.detach().cpu()
+        num_samples += x.shape[0]
+
+    for k, v in train_loss.items():
+        train_loss[k] = v / num_samples
+
+    return dict(train_loss)
+
+def validate_epoch(cfg, model, device, dl, num_labels):
+    model.eval()
+    ys = []
+    outs = []
+    with torch.no_grad():
+        for x, y in dl:
+            x = x.to(device)
+            y = [_y.to(device) for _y in y]
+            out = model(x)
+
+            ys.extend(y)
+            outs.extend(out)
+
+    coco_metrics = compute_coco_eval(outs, ys, num_labels)
+    metrics = {'coco_map': coco_metrics[0]}
+    return metrics
 
 @click.command()
 @click.argument('config_path')
@@ -85,65 +65,65 @@ def train(config_path, opts):
     print(cfg)
 
     # Setup data
-    databunch, full_databunch = build_databunch(cfg, tmp_dir)
+    databunch = build_databunch(cfg, tmp_dir)
     output_dir = setup_output_dir(cfg, tmp_dir)
-    print(full_databunch)
+    print(databunch)
 
     plotter = build_plotter(cfg)
-    if not cfg.lr_find_mode:
-        plotter.plot_data(databunch, output_dir)
+    if not cfg.predict_mode:
+        plotter.plot_dataloaders(databunch, output_dir)
 
     # Setup model
-    num_labels = databunch.c
+    num_labels = len(databunch.label_names)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     model = build_model(cfg, num_labels)
-    metrics = [CocoMetric(num_labels)]
-    learn = Learner(databunch, model, path=output_dir, metrics=metrics)
-    fastai.basic_train.loss_batch = loss_batch
+    model.to(device)
+    opt = build_optimizer(cfg, model)
+
     best_model_path = join(output_dir, 'best_model.pth')
     last_model_path = join(output_dir, 'last_model.pth')
 
-    # Train model
-    callbacks = [
-        MyCSVLogger(learn, filename='log'),
-        SubLossMetric(learn, model.subloss_names)
-    ]
-
+    # TODO save last, overfit, resume, save best,
+    # csv, progress bar, tensorboard
+    # save config file
     if cfg.output_uri.startswith('s3://'):
-        callbacks.append(
-            SyncCallback(output_dir, cfg.output_uri, cfg.solver.sync_interval))
+        sync_to_dir(cfg.output_uri, output_dir)
 
-    if cfg.overfit_mode:
-        learn.fit_one_cycle(cfg.solver.num_epochs, cfg.solver.lr, callbacks=callbacks)
+    if cfg.model.init_weights:
+        device = next(model.parameters()).device
+        model.load_state_dict(
+            torch.load(cfg.model.init_weights, map_location=device))
+
+    if cfg.predict_mode:
+        '''
+        model.load_state_dict(
+            torch.load(join(output_dir, 'best_model.pth'), map_location=device))
+        '''
+        model.eval()
         plot_dataset = databunch.train_ds
-        torch.save(learn.model.state_dict(), last_model_path)
-        print('Validating on training set...')
-        learn.validate(full_databunch.train_dl, metrics=metrics)
+    elif cfg.overfit_mode:
+        pass
     else:
-        tb_logger = TensorboardLogger(learn, 'run')
-        tb_logger.set_extra_args(
-            model.subloss_names, cfg.overfit_mode)
+        for epoch in range(cfg.solver.num_epochs):
+            train_loss = train_epoch(
+                cfg, model, device, databunch.train_dl, opt, epoch)
+            print('epoch: {}'.format(epoch))
+            print('train loss: {}'.format(train_loss))
+            metrics = validate_epoch(
+                cfg, model, device, databunch.valid_dl, num_labels)
+            print('validation metrics: {}'.format(metrics))
+        plot_dataset = databunch.test_ds
 
-        extra_callbacks = [
-            MySaveModelCallback(
-                learn, best_model_path, monitor='coco_metric', every='improvement'),
-            MySaveModelCallback(learn, last_model_path, every='epoch'),
-            TrackEpochCallback(learn),
-        ]
-        callbacks.extend(extra_callbacks)
-        if cfg.lr_find_mode:
-            learn.lr_find()
-            learn.recorder.plot(suggestion=True, return_fig=True)
-            lr = learn.recorder.min_grad_lr
-            print('lr_find() found lr: {}'.format(lr))
-            exit()
-
-        learn.fit_one_cycle(cfg.solver.num_epochs, cfg.solver.lr, callbacks=callbacks)
-        plot_dataset = databunch.valid_ds
-        print('Validating on full validation set...')
-        learn.validate(full_databunch.valid_dl, metrics=metrics)
+    print('Evaluating on test set...')
+    metrics = validate_epoch(
+        cfg, model, device, databunch.test_dl, num_labels)
+    print('test metrics: {}'.format(metrics))
 
     print('Plotting predictions...')
-    plotter.make_debug_plots(plot_dataset, learn.model, databunch.classes, output_dir)
+    plotter.make_debug_plots(
+        plot_dataset, model, databunch.label_names, output_dir)
+
     if cfg.output_uri.startswith('s3://'):
         sync_to_dir(output_dir, cfg.output_uri)
 

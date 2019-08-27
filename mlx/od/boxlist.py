@@ -27,7 +27,7 @@ class BoxList():
         if name == 'boxes':
             return self.boxes
         else:
-            return self.extras[name]
+            return self.extras.get(name)
 
     def _map_extras(self, func):
         new_extras = {}
@@ -40,6 +40,12 @@ class BoxList():
 
     def cpu(self):
         return BoxList(self.boxes.cpu(), **self._map_extras(lambda x: x.cpu()))
+
+    def cuda(self):
+        return BoxList(self.boxes.cuda(), **self._map_extras(lambda x: x.cuda()))
+
+    def to(self, device):
+        return self.cpu() if device == 'cpu' else self.cuda()
 
     def __len__(self):
         return self.boxes.shape[0]
@@ -101,3 +107,9 @@ class BoxList():
             self.boxes, self.get_field('scores'), self.get_field('labels'),
             iou_thresh)
         return self.ind_filter(good_inds)
+
+    def scale(self, yscale, xscale):
+        boxes = self.boxes * torch.tensor(
+            [[yscale, xscale, yscale, xscale]], device=self.boxes.device)
+        return BoxList(boxes, **self.extras)
+

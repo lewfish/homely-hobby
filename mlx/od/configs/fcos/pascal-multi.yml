@@ -13,7 +13,4 @@ solver:
   test_num_epochs: 1
 data:
   dataset: "pascal2007"
-  data_uri: "data/pascal_2007"
   img_sz: 448
-output_uri: "output"
-base_uri: "s3://raster-vision-lf-dev/pascal2007"
