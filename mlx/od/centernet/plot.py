@@ -63,7 +63,7 @@ class CenterNetPlotter(Plotter):
         zip_path = join(output_dir, 'preds.zip')
         make_dir(preds_dir, force_empty=True)
 
-        model.eval()
+        # model.eval()
         for img_id, (x, y) in enumerate(dataset):
             if img_id == max_plots:
                 break
@@ -77,26 +77,23 @@ class CenterNetPlotter(Plotter):
                         bbox_inches='tight')
             plt.close(fig)
 
+            # Plot raw output of network.
             keypoint, reg = head_out
-            keypoint, reg = torch.sigmoid(keypoint[0]), reg[0]
+            keypoint, reg = keypoint[0].cpu(), reg[0].cpu()
             stride = model.stride
 
-            # detach, cpu
             fig = plot_encoded(boxlist, stride, keypoint, reg, classes=classes)
             plt.savefig(
                 join(preds_dir, '{}-output.png'.format(img_id)), dpi=100,
                 bbox_inches='tight')
             plt.close(fig)
 
-            # Get encoding of ground truth targets.
-            h, w = x.size
-            boxes, labels = y.data
-            boxes = to_box_pixel(boxes, h, w)
-            boxlist = BoxList(boxes, labels=labels)
-            positions = get_positions(h, w, stride, boxes.device)
-            keypoint, reg = encode([boxlist], positions, stride, len(classes))
+            # Plot encoding of ground truth targets.
+            h, w = x.shape[1:]
+            positions = get_positions(h, w, stride, y.boxes.device)
+            keypoint, reg = encode([y], positions, stride, len(classes))
             fig = plot_encoded(
-                boxlist, stride, keypoint[0], reg[0], classes=classes)
+                y, stride, keypoint[0], reg[0], classes=classes)
             plt.savefig(
                 join(preds_dir, '{}-targets.png'.format(img_id)), dpi=100,
                 bbox_inches='tight')

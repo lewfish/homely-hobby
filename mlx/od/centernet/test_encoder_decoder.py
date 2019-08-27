@@ -2,8 +2,8 @@ import unittest
 
 import torch
 
+from mlx.od.boxlist import BoxList
 from mlx.od.centernet.encoder import encode
-from mlx.od.centernet.boxlist import BoxList
 from mlx.od.centernet.decoder import decode
 from mlx.od.centernet.utils import get_positions
 from mlx.od.centernet.plot import plot_encoded

@@ -1,14 +1,11 @@
 from os.path import join
 import tempfile
 
-import torch
-from fastai.callback import Callback, add_metrics
 import pycocotools
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
 from mlx.filesystem.utils import json_to_file
-from mlx.od.boxlist import to_box_pixel
 
 def get_coco_gt(targets, num_labels):
     images = []
@@ -22,8 +19,8 @@ def get_coco_gt(targets, num_labels):
             'width': 1000,
             'file_name': '{}.png'.format(img_id)
         })
-        boxes, labels = target
-        for box, label in zip(*target):
+        boxes, labels = target.boxes, target.get_field('labels')
+        for box, label in zip(boxes, labels):
             box = box.float().tolist()
             label = label.item()
             annotations.append({
@@ -47,7 +44,7 @@ def get_coco_gt(targets, num_labels):
 def get_coco_preds(outputs):
     preds = []
     for img_id, output in enumerate(outputs, 1):
-        for box, label, score in zip(*output):
+        for box, label, score in zip(output.boxes, output.get_field('labels'), output.get_field('scores')):
             box = box.float().tolist()
             label = label.item()
             score = score.item()
@@ -78,7 +75,7 @@ def compute_coco_eval(outputs, targets, num_labels):
         preds = get_coco_preds(outputs)
         # ap is undefined when there are no predicted boxes
         if len(preds) == 0:
-            return -1
+            return [0., 0.]
 
         gt = get_coco_gt(targets, num_labels)
         gt_path = join(tmp_dir, 'gt.json')
@@ -95,36 +92,4 @@ def compute_coco_eval(outputs, targets, num_labels):
         coco_eval.accumulate()
         coco_eval.summarize()
 
-        return coco_eval.stats[0]
-
-class CocoMetric(Callback):
-    def __init__(self, num_labels):
-        super().__init__()
-        self.num_labels = num_labels
-        self.__name__ = 'mAP'
-
-    def on_epoch_begin(self, **kwargs):
-        self.outputs = []
-        self.targets = []
-
-    def on_batch_begin(self, last_input, last_target, **kwargs):
-        self.h, self.w = last_input.shape[2:]
-
-    def on_batch_end(self, last_output, last_target, **kwargs):
-        self.outputs.extend(last_output)
-        self.targets.append(last_target)
-
-    def on_epoch_end(self, last_metrics, **kwargs):
-        # Convert from fastai format
-        my_targets = []
-        for batch_boxes, batch_labels in self.targets:
-            for boxes, labels in zip(batch_boxes, batch_labels):
-                non_pad_inds = labels != 0
-                boxes = to_box_pixel(boxes, self.h, self.w)
-                my_targets.append((boxes[non_pad_inds, :], labels[non_pad_inds]))
-
-        my_outputs = [
-            (boxlist.boxes, boxlist.get_field('labels'), boxlist.get_field('scores'))
-            for boxlist in self.outputs]
-        metric = compute_coco_eval(my_outputs, my_targets, self.num_labels)
-        return add_metrics(last_metrics, metric)
+        return coco_eval.stats

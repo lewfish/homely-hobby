@@ -34,7 +34,8 @@ def plot_reg_center_arr(reg_arr, center_probs, stride):
     return fig
 
 class FCOSPlotter(Plotter):
-    def make_debug_plots(self, dataset, model, classes, output_dir, max_plots=25, score_thresh=0.25):
+    def make_debug_plots(self, dataset, model, classes, output_dir,
+                         max_plots=25, score_thresh=0.25):
         preds_dir = join(output_dir, 'preds')
         zip_path = join(output_dir, 'preds.zip')
         make_dir(preds_dir, force_empty=True)
@@ -78,12 +79,10 @@ class FCOSPlotter(Plotter):
                 plt.close(fig)
 
             # Get encoding of ground truth targets.
-            h, w = x.size
-            boxes, labels = y.data
-            labels = torch.tensor(labels)
-            boxes = (boxes + 1.0) / 2.0
-            boxes *= torch.tensor([[h, w, h, w]], device=boxes.device, dtype=torch.float)
-            targets = encode_single_targets(boxes, labels, model.pyramid_shape, model.num_labels)
+            h, w = x.shape[1:]
+            targets = encode_single_targets(
+                y.boxes, y.get_field('labels'), model.pyramid_shape,
+                model.num_labels)
 
             # Plot encoding of ground truth at each level.
             for level, level_targets in enumerate(targets):
