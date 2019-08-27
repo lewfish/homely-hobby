@@ -199,7 +199,6 @@ def train(config_path, opts):
         else:
             train_loop(cfg, databunch, model, opt, device, output_dir)
 
-
     print('\nEvaluating on test set...')
     metrics = validate_epoch(
         cfg, model, device, databunch.test_dl, num_labels)

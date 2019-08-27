@@ -57,47 +57,54 @@ def plot_encoded(boxlist, stride, keypoint, reg, classes=None):
     return fig
 
 class CenterNetPlotter(Plotter):
-    def make_debug_plots(self, dataset, model, classes, output_dir,
+    def make_debug_plots(self, dataloader, model, classes, output_dir,
                          max_plots=25, score_thresh=0.4):
         preds_dir = join(output_dir, 'preds')
         zip_path = join(output_dir, 'preds.zip')
         make_dir(preds_dir, force_empty=True)
 
-        # model.eval()
-        for img_id, (x, y) in enumerate(dataset):
-            if img_id == max_plots:
-                break
+        model.eval()
+        for batch_x, batch_y in dataloader:
+            with torch.no_grad():
+                device = list(model.parameters())[0].device
+                batch_x = batch_x.to(device=device)
+                batch_sz = batch_x.shape[0]
+                batch_boxlist, batch_head_out = model(batch_x, get_head_out=True)
+            
+            for img_ind in range(batch_sz):
+                x = batch_x[img_ind].cpu()
+                y = batch_y[img_ind].cpu()
+                boxlist = batch_boxlist[img_ind].score_filter(score_thresh).cpu()
+                head_out = (batch_head_out[0][img_ind], batch_head_out[1][img_ind])
 
-            # Get predictions
-            boxlist, head_out = self.get_pred(x, model, score_thresh)
+                # Plot image, ground truth, and predictions
+                fig = self.plot_image_preds(x, y, boxlist, classes)
+                plt.savefig(join(preds_dir, '{}-images.png'.format(img_ind)), dpi=200,
+                            bbox_inches='tight')
+                plt.close(fig)
 
-            # Plot image, ground truth, and predictions
-            fig = self.plot_image_preds(x, y, boxlist, classes)
-            plt.savefig(join(preds_dir, '{}-images.png'.format(img_id)), dpi=200,
-                        bbox_inches='tight')
-            plt.close(fig)
+                # Plot raw output of network.
+                keypoint, reg = head_out
+                keypoint, reg = keypoint.cpu(), reg.cpu()
+                stride = model.stride
 
-            # Plot raw output of network.
-            keypoint, reg = head_out
-            keypoint, reg = keypoint[0].cpu(), reg[0].cpu()
-            stride = model.stride
+                fig = plot_encoded(boxlist, stride, keypoint, reg, classes=classes)
+                plt.savefig(
+                    join(preds_dir, '{}-output.png'.format(img_ind)), dpi=100,
+                    bbox_inches='tight')
+                plt.close(fig)
 
-            fig = plot_encoded(boxlist, stride, keypoint, reg, classes=classes)
-            plt.savefig(
-                join(preds_dir, '{}-output.png'.format(img_id)), dpi=100,
-                bbox_inches='tight')
-            plt.close(fig)
-
-            # Plot encoding of ground truth targets.
-            h, w = x.shape[1:]
-            positions = get_positions(h, w, stride, y.boxes.device)
-            keypoint, reg = encode([y], positions, stride, len(classes))
-            fig = plot_encoded(
-                y, stride, keypoint[0], reg[0], classes=classes)
-            plt.savefig(
-                join(preds_dir, '{}-targets.png'.format(img_id)), dpi=100,
-                bbox_inches='tight')
-            plt.close(fig)
+                # Plot encoding of ground truth targets.
+                h, w = x.shape[1:]
+                positions = get_positions(h, w, stride, y.boxes.device)
+                keypoint, reg = encode([y], positions, stride, len(classes))
+                fig = plot_encoded(
+                    y, stride, keypoint[0], reg[0], classes=classes)
+                plt.savefig(
+                    join(preds_dir, '{}-targets.png'.format(img_ind)), dpi=100,
+                    bbox_inches='tight')
+                plt.close(fig)
+            break
 
         zipdir(preds_dir, zip_path)
         shutil.rmtree(preds_dir)

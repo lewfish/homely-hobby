@@ -22,7 +22,7 @@ def encode(boxlists, positions, stride, num_labels):
 
         # TODO vectorize this loop
         for center, size, label in zip(centers, sizes, labels):
-            sigma = min(size) / 6
+            sigma = 12
             gaussian2d = get_gaussian2d(positions, center, sigma)
             keypoint[n, label, :, :] = torch.max(keypoint[n, label, :, :], gaussian2d)
             y, x = int(center[0] / stride), int(center[1] / stride)
