@@ -68,11 +68,12 @@ class Plotter():
         pass
 
     def plot_dataloaders(self, databunch, output_dir):
-        databunch.valid_ds[0]
         if databunch.train_dl:
             plot_dataloader(databunch.train_dl, databunch.label_names, join(output_dir, 'train_dl.png'))
         if databunch.valid_dl:
             plot_dataloader(databunch.valid_dl, databunch.label_names, join(output_dir, 'valid_dl.png'))
+        if databunch.test_dl:
+            plot_dataloader(databunch.test_dl, databunch.label_names, join(output_dir, 'test_dl.png'))
 
     def get_pred(self, x, model, score_thresh):
         with torch.no_grad():
