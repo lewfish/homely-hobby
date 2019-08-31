@@ -21,11 +21,11 @@ cfg.model.faster_rcnn = CN()
 cfg.solver = CN()
 cfg.solver.lr = 1e-4
 cfg.solver.num_epochs = 25
+cfg.solver.test_num_epochs = 2
+cfg.solver.overfit_num_steps = 500
+cfg.solver.test_overfit_num_steps = 2
 cfg.solver.sync_interval = 2
 cfg.solver.batch_sz = 16
-cfg.solver.overfit_num_epochs = 500
-cfg.solver.overfit_sync_interval = 1000
-cfg.solver.test_num_epochs = 2
 cfg.solver.one_cycle = False
 cfg.solver.multi_stage = []
 cfg.solver.test_multi_stage = []
@@ -49,15 +49,15 @@ def process_config(cfg):
 
     img_sz = cfg.data.img_sz
     if cfg.overfit_mode:
-        cfg.solver.num_epochs = cfg.solver.overfit_num_epochs
-        cfg.solver.sync_interval = cfg.solver.overfit_sync_interval
         cfg.data.img_sz = img_sz // 2
         cfg.solver.batch_sz = 4
+        if cfg.test_mode:
+            cfg.solver.overfit_num_steps = cfg.solver.test_overfit_num_steps
 
     if cfg.test_mode:
         cfg.solver.num_epochs = cfg.solver.test_num_epochs
         cfg.data.img_sz = img_sz // 2
-        cfg.solver.batch_sz = 2
+        cfg.solver.batch_sz = 4
         cfg.data.num_workers = 0
         cfg.solver.multi_stage = cfg.solver.test_multi_stage
 
