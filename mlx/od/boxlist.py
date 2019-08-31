@@ -121,3 +121,8 @@ class BoxList():
             [[yscale, xscale, yscale, xscale]], device=self.boxes.device)
         return BoxList(boxes, **self.extras)
 
+    def pin_memory(self):
+        self.boxes = self.boxes.pin_memory()
+        for k, v in self.extras.items():
+            self.extras[k] = v.pin_memory()
+        return self
