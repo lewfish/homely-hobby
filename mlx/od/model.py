@@ -1,9 +1,11 @@
 from mlx.od.fcos.model import FCOS
 from mlx.od.centernet.model import CenterNet
+from mlx.od.faster_rcnn.model import MyFasterRCNN
 
 fcos = 'fcos'
 centernet = 'centernet'
-model_types = [fcos, centernet]
+faster_rcnn = 'faster_rcnn'
+model_types = [fcos, centernet, faster_rcnn]
 
 def validate_model_type(model_type):
     if model_type not in model_types:
@@ -18,5 +20,8 @@ def build_model(cfg, num_labels):
             levels=cfg.model.fcos.levels)
     elif model_type == centernet:
         return CenterNet(
-            cfg.model.centernet.backbone_arch, num_labels,
-            (cfg.data.img_sz, cfg.data.img_sz))
+            cfg.model.centernet.backbone_arch, num_labels)
+    elif model_type == faster_rcnn:
+        return MyFasterRCNN(
+            num_labels, cfg.data.img_sz)
+

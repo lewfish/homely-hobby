@@ -1,0 +1,13 @@
+model:
+  type: "faster_rcnn"
+solver:
+  lr: 1e-4
+  num_epochs: 35
+  overfit_num_steps: 200
+  sync_interval: 2
+  batch_sz: 32
+  multi_stage: [20, 30]
+  test_multi_stage: [1]
+data:
+  dataset: "pascal2007"
+  img_sz: 384

@@ -47,6 +47,14 @@ class BoxList():
     def to(self, device):
         return self.cpu() if device == 'cpu' else self.cuda()
 
+    def xyxy(self):
+        boxes = self.boxes[:, [1, 0, 3, 2]]
+        return BoxList(boxes, **self.extras)
+
+    def yxyx(self):
+        boxes = self.boxes[:, [1, 0, 3, 2]]
+        return BoxList(boxes, **self.extras)
+
     def __len__(self):
         return self.boxes.shape[0]
 

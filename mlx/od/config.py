@@ -16,6 +16,8 @@ cfg.model.fcos.levels = [2]
 cfg.model.centernet = CN()
 cfg.model.centernet.backbone_arch = "resnet18"
 
+cfg.model.faster_rcnn = CN()
+
 cfg.solver = CN()
 cfg.solver.lr = 1e-4
 cfg.solver.num_epochs = 25
