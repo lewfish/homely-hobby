@@ -30,7 +30,7 @@ cfg.solver.test_num_epochs = 2
 cfg.data = CN()
 cfg.data.dataset = "pascal2007"
 cfg.data.img_sz = 448
-cfg.data.num_workers = 4
+cfg.data.num_workers = 0
 
 cfg.predict_mode = False
 cfg.test_mode = False
