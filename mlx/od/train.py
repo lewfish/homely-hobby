@@ -12,14 +12,14 @@ from mlx.od.data import setup_output_dir, build_databunch
 from mlx.od.config import load_config
 from mlx.od.model import build_model
 from mlx.od.plot import build_plotter
-from mlx.od.optimizer import build_optimizer
+from mlx.od.optimizer import build_optimizer, build_scheduler
 
-def train_epoch(cfg, model, device, dl, opt, epoch):
+def train_epoch(cfg, model, device, dl, opt, step_scheduler=None, epoch_scheduler=None):
     model.train()
     train_loss = defaultdict(lambda: 0.0)
     num_samples = 0
 
-    for batch_idx, (x, y) in enumerate(dl):
+    for batch_ind, (x, y) in enumerate(dl):
         # skip partial batch at end to avoid messing up batchnorm
         if x.shape[0] < cfg.solver.batch_sz:
             continue
@@ -31,11 +31,14 @@ def train_epoch(cfg, model, device, dl, opt, epoch):
         loss_dict = model(x, y)
         loss_dict['total_loss'].backward()
         opt.step()
+        if step_scheduler:
+            step_scheduler.step()
 
         for k, v in loss_dict.items():
             train_loss[k] += v.item()
-
         num_samples += x.shape[0]
+
+        # print(str(batch_ind), flush=True)        
 
     for k, v in train_loss.items():
         train_loss[k] = v / num_samples
@@ -59,6 +62,13 @@ def validate_epoch(cfg, model, device, dl, num_labels):
     metrics = {'map': coco_metrics[0]}
     return metrics
 
+
+    step_scheduler, epoch_scheduler = build_scheduler(cfg, databunch, opt, start_epoch)
+
+        train_loss = train_epoch(
+            cfg, model, device, databunch.train_dl, opt, step_scheduler, epoch_scheduler)
+        if epoch_scheduler:
+            epoch_scheduler.step()
 @click.command()
 @click.argument('config_path')
 @click.argument('opts', nargs=-1)

@@ -26,6 +26,9 @@ cfg.solver.batch_sz = 16
 cfg.solver.overfit_num_epochs = 500
 cfg.solver.overfit_sync_interval = 1000
 cfg.solver.test_num_epochs = 2
+cfg.solver.one_cycle = False
+cfg.solver.multi_stage = []
+cfg.solver.test_multi_stage = []
 
 cfg.data = CN()
 cfg.data.dataset = "pascal2007"
@@ -56,6 +59,7 @@ def process_config(cfg):
         cfg.data.img_sz = img_sz // 2
         cfg.solver.batch_sz = 2
         cfg.data.num_workers = 0
+        cfg.solver.multi_stage = cfg.solver.test_multi_stage
 
 def load_config(config_path, opts):
     cfg.merge_from_file(config_path)
