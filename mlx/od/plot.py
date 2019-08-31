@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.gridspec as gridspec
 
-from mlx.od.model import fcos, centernet
+from mlx.od.model import fcos, centernet, faster_rcnn
 from mlx.filesystem.utils import make_dir
 
 def plot_xy(ax, x, y=None, label_names=None):
@@ -26,10 +26,10 @@ def plot_xy(ax, x, y=None, label_names=None):
             label_name = label_names[label]
             if scores is not None:
                 score = scores[box_ind]
-                label_name += ' {.2f}'.format(score)
-            label_width = len(label_name) * 7
+                label_name += ' {:.2f}'.format(score)
+            label_width = len(label_name) * 4
             rect = patches.Rectangle(
-                (box[1], box[0] - 11), label_width, 11, color='cyan')
+                (box[1], box[0] - 6), label_width, 6, color='cyan')
             ax.add_patch(rect)
             ax.text(box[1] + 2, box[0] - 2, label_name, fontsize=7)
     ax.axis('off')
@@ -76,6 +76,7 @@ class Plotter():
             plot_dataloader(databunch.test_dl, databunch.label_names, join(output_dir, 'test_dl.png'))
 
     def get_pred(self, x, model, score_thresh):
+        model.eval()
         with torch.no_grad():
             device = list(model.parameters())[0].device
             x = x.unsqueeze(0).to(device=device)
@@ -127,3 +128,6 @@ def build_plotter(cfg):
     elif cfg.model.type == centernet:
         from mlx.od.centernet.plot import CenterNetPlotter
         return CenterNetPlotter()
+    elif cfg.model.type == faster_rcnn:
+        from mlx.od.faster_rcnn.plot import FasterRCNNPlotter
+        return FasterRCNNPlotter()

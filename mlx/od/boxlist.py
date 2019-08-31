@@ -47,6 +47,14 @@ class BoxList():
     def to(self, device):
         return self.cpu() if device == 'cpu' else self.cuda()
 
+    def xyxy(self):
+        boxes = self.boxes[:, [1, 0, 3, 2]]
+        return BoxList(boxes, **self.extras)
+
+    def yxyx(self):
+        boxes = self.boxes[:, [1, 0, 3, 2]]
+        return BoxList(boxes, **self.extras)
+
     def __len__(self):
         return self.boxes.shape[0]
 
@@ -113,3 +121,8 @@ class BoxList():
             [[yscale, xscale, yscale, xscale]], device=self.boxes.device)
         return BoxList(boxes, **self.extras)
 
+    def pin_memory(self):
+        self.boxes = self.boxes.pin_memory()
+        for k, v in self.extras.items():
+            self.extras[k] = v.pin_memory()
+        return self

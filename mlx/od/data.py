@@ -20,6 +20,7 @@ def validate_dataset(dataset):
 
 def setup_output_dir(cfg, tmp_dir):
     if not cfg.output_uri.startswith('s3://'):
+        make_dir(cfg.output_uri)
         return cfg.output_uri
 
     output_dir = get_local_path(cfg.output_uri, tmp_dir)
@@ -142,18 +143,17 @@ def build_databunch(cfg, tmp_dir):
         train_ds = Subset(train_ds, range(batch_sz))
         test_ds = train_ds
     elif cfg.test_mode:
-        orig_train_ds = train_ds
-        train_ds = Subset(orig_train_ds, range(batch_sz))
-        valid_ds = Subset(orig_train_ds, range(batch_sz, 2*batch_sz))
-        test_ds = valid_ds
+        train_ds = Subset(train_ds, range(batch_sz))
+        valid_ds = train_ds
+        test_ds = train_ds
     else:
         test_ds = CocoDataset(test_dir, test_anns, transforms=transforms)
         valid_ds = Subset(test_ds, range(len(test_ds.imgs) // 5))
 
-    train_dl = DataLoader(train_ds, shuffle=True, collate_fn=collate_fn, batch_size=batch_sz, num_workers=num_workers) \
+    train_dl = DataLoader(train_ds, shuffle=True, collate_fn=collate_fn, batch_size=batch_sz, num_workers=num_workers, pin_memory=True) \
         if train_ds else None
-    valid_dl = DataLoader(valid_ds, collate_fn=collate_fn, batch_size=batch_sz, num_workers=num_workers) \
+    valid_dl = DataLoader(valid_ds, collate_fn=collate_fn, batch_size=batch_sz, num_workers=num_workers, pin_memory=True) \
         if valid_ds else None
-    test_dl = DataLoader(test_ds, collate_fn=collate_fn, batch_size=batch_sz, num_workers=num_workers) \
+    test_dl = DataLoader(test_ds, collate_fn=collate_fn, batch_size=batch_sz, num_workers=num_workers, pin_memory=True) \
         if test_ds else None
     return DataBunch(train_ds, train_dl, valid_ds, valid_dl, test_ds, test_dl, label_names)
