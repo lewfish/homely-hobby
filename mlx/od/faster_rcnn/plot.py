@@ -37,7 +37,7 @@ class FasterRCNNPlotter(Plotter):
 
                 # Plot image, ground truth, and predictions
                 fig = self.plot_image_preds(x, y, boxlist, classes)
-                plt.savefig(join(preds_dir, '{}-images.png'.format(img_ind)), dpi=200,
+                plt.savefig(join(preds_dir, '{}-images.png'.format(img_ind)),
                             bbox_inches='tight')
                 plt.close(fig)
             break

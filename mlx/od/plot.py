@@ -27,11 +27,16 @@ def plot_xy(ax, x, y=None, label_names=None):
             if scores is not None:
                 score = scores[box_ind]
                 label_name += ' {:.2f}'.format(score)
-            label_width = len(label_name) * 4
+            
+            h, w = x.shape[1:]
+            label_height = h * 0.03
+            label_width = w * 0.15
             rect = patches.Rectangle(
-                (box[1], box[0] - 6), label_width, 6, color='cyan')
+                (box[1], box[0] - label_height), label_width, label_height, color='cyan')
             ax.add_patch(rect)
-            ax.text(box[1] + 2, box[0] - 2, label_name, fontsize=7)
+
+            ax.text(box[1] + w * 0.003, box[0] - h * 0.003, label_name, fontsize=7)
+
     ax.axis('off')
 
 def plot_dataset(dataset, label_names, output_dir, num_imgs=5):
@@ -50,8 +55,8 @@ def plot_dataloader(dataloader, label_names, output_path):
     x, y = next(iter(dataloader))
     batch_sz = x.shape[0]
 
-    fig = plt.figure(constrained_layout=True, figsize=(6, 6))
     ncols = nrows = math.ceil(math.sqrt(batch_sz))
+    fig = plt.figure(constrained_layout=True, figsize=(3 * ncols, 3 * nrows))
     grid = gridspec.GridSpec(ncols=ncols, nrows=nrows, figure=fig)
 
     for i in range(batch_sz):
@@ -88,7 +93,7 @@ class Plotter():
 
     def plot_image_preds(self, x, y, z, label_names):
         """Plot original, ground truth, and predictions on single figure."""
-        fig = plt.figure(constrained_layout=True, figsize=(6, 3))
+        fig = plt.figure(constrained_layout=True, figsize=(9, 3))
         grid = gridspec.GridSpec(ncols=3, nrows=1, figure=fig)
 
         ax = fig.add_subplot(grid[0])
