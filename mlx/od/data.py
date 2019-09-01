@@ -1,11 +1,13 @@
 from os.path import join
 from collections import defaultdict
+import random
 
 from PIL import Image
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader, Subset
 import torch.nn.functional as F
+import torchvision
 
 from mlx.filesystem.utils import (download_if_needed, get_local_path, make_dir,
                                   sync_from_dir, unzip, file_to_json)
@@ -49,7 +51,14 @@ class DataBunch():
         rep += 'label_names: ' + ','.join(self.label_names)
         return rep
 
-class ScaleTransform():
+class ToTensor(object):
+    def __init__(self):
+        self.to_tensor = torchvision.transforms.ToTensor()
+    
+    def __call__(self, x, y):
+        return (self.to_tensor(x), y)
+
+class ScaleTransform(object):
     def __init__(self, height, width):
         self.height = height
         self.width = width
@@ -59,6 +68,30 @@ class ScaleTransform():
         xscale = self.width / x.shape[2]
         x = F.interpolate(x.unsqueeze(0), size=(self.height, self.width), mode='bilinear')[0]
         return (x, y.scale(yscale, xscale))
+
+class RandomHorizontalFlip(object):
+    def __init__(self, prob=0.5):
+        self.prob = prob
+
+    def __call__(self, x, y):
+        if random.random() < self.prob:
+            height, width = x.shape[-2:]
+            x = x.flip(-1)
+
+            boxes = y.boxes
+            boxes[:, [1, 3]] = width - boxes[:, [3, 1]]
+            y.boxes = boxes
+        
+        return (x, y)
+
+class ComposeTransforms(object):
+    def __init__(self, transforms):
+        self.transforms = transforms
+    
+    def __call__(self, x, y):
+        for t in self.transforms:
+            x, y = t(x, y)
+        return x, y
 
 def collate_fn(data):
     x = [d[0].unsqueeze(0) for d in data]
@@ -96,8 +129,7 @@ class CocoDataset(Dataset):
     def __getitem__(self, ind):
         img_fn = self.imgs[ind]
         img_id = self.img2id[img_fn]
-        img = np.array(Image.open(join(self.img_dir, img_fn)))
-        img = torch.from_numpy(img).permute((2, 0, 1)).float() / 255.0
+        img = Image.open(join(self.img_dir, img_fn))
 
         boxes, labels = self.id2boxes[img_id], self.id2labels[img_id]
         boxlist = BoxList(boxes, labels=labels)
@@ -135,18 +167,20 @@ def build_databunch(cfg, tmp_dir):
         test_anns = [join(data_dir, 'test.json')]
 
     label_names = get_label_names(train_anns[0])
-    transforms = ScaleTransform(img_sz, img_sz)
-    train_ds = CocoDataset(train_dir, train_anns, transforms=transforms)
-    valid_ds, test_ds = None, None
+    aug_transforms = ComposeTransforms([ToTensor(), ScaleTransform(img_sz, img_sz), RandomHorizontalFlip()])
+    transforms = ComposeTransforms([ToTensor(), ScaleTransform(img_sz, img_sz)])
 
     if cfg.overfit_mode:
+        train_ds = CocoDataset(train_dir, train_anns, transforms=transforms)
         train_ds = Subset(train_ds, range(batch_sz))
         test_ds = train_ds
     elif cfg.test_mode:
+        train_ds = CocoDataset(train_dir, train_anns, transforms=aug_transforms)
         train_ds = Subset(train_ds, range(batch_sz))
         valid_ds = train_ds
         test_ds = train_ds
     else:
+        train_ds = CocoDataset(train_dir, train_anns, transforms=aug_transforms)
         test_ds = CocoDataset(test_dir, test_anns, transforms=transforms)
         valid_ds = Subset(test_ds, range(len(test_ds.imgs) // 5))
 
