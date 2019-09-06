@@ -8,7 +8,6 @@ client = boto3.client('ec2', region_name='us-east-1')
 response = client.request_spot_instances(
     DryRun=False,
     SpotPrice='0.5',
-    ClientToken='lewfish-spot-req',
     InstanceCount=1,
     Type='one-time',
     LaunchSpecification={
