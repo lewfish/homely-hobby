@@ -5,6 +5,7 @@ import datetime
 
 client = boto3.client('ec2', region_name='us-east-1')
 
+'''
 response = client.request_spot_instances(
     DryRun=False,
     SpotPrice='0.5',
@@ -12,7 +13,7 @@ response = client.request_spot_instances(
     Type='one-time',
     LaunchSpecification={
         'ImageId': 'ami-0241ac1f637a90b84',
-        'KeyName': 'lewfish-raster-vision',
+        'KeyName': 'raster-vision-team',
         'InstanceType': 'p2.xlarge',
         'Placement': {
             'AvailabilityZone': 'us-east-1a',
@@ -38,9 +39,24 @@ response = client.request_spot_instances(
     }
 )
 
-print(response)
+spot_instance_request_id = response['SpotInstanceRequests'][0]['SpotInstanceRequestId']
+'''
+
+spot_instance_request_id = 'sir-arn8533j'
+
+print('Waiting for spot request to be fulfilled...')
+waiter = client.get_waiter('spot_instance_request_fulfilled')
+waiter.wait(SpotInstanceRequestIds=[spot_instance_request_id])
+print('Spot request fulfilled!')
+
+instance_id = client.describe_spot_instance_requests(
+    SpotInstanceRequestIds=[spot_instance_request_id])['SpotInstanceRequests'][0]['InstanceId']
+public_dns = client.describe_instances(InstanceIds=[instance_id])['Reservations'][0]['Instances'][0]['PublicDnsName']
+
+print('Waiting for instance to be running...')
+waiter = client.get_waiter('instance_running')
+waiter.wait(InstanceIds=[instance_id])
+print('Instance is running!')
+
 print()
-instances = client.instances.filter(
-    Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
-for instance in instances:
-    print("Id: {}, type: {}, ip: {}".format(instance.id, instance.instance_type, instance.public_ip_address))
+print('ssh -i ~/.aws/raster-vision-team.pem ec2-user@{}'.format(public_dns))
