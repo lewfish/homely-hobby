@@ -185,10 +185,6 @@ def train(config_path, opts):
     opt = build_optimizer(cfg, model)
 
     # TODO tensorboard, progress bar
-
-    if cfg.output_uri.startswith('s3://'):
-        sync_from_dir(cfg.output_uri, output_dir)
-
     if cfg.model.init_weights:
         model.load_state_dict(
             torch.load(cfg.model.init_weights, map_location=device))

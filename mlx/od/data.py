@@ -1,6 +1,7 @@
 from os.path import join
 from collections import defaultdict
 import random
+import os
 
 from PIL import Image
 import numpy as np
@@ -27,7 +28,8 @@ def setup_output_dir(cfg, tmp_dir):
 
     output_dir = get_local_path(cfg.output_uri, tmp_dir)
     make_dir(output_dir, force_empty=True)
-    sync_from_dir(cfg.output_uri, output_dir)
+    if not cfg.overfit_mode:
+        sync_from_dir(cfg.output_uri, output_dir)
     return output_dir
 
 class DataBunch():
@@ -154,11 +156,14 @@ def build_databunch(cfg, tmp_dir):
     batch_sz = cfg.solver.batch_sz
     num_workers = cfg.data.num_workers
 
+    data_cache_dir = '/opt/data/data-cache'
     if cfg.data.dataset == pascal2007:
         if cfg.base_uri.startswith('s3://'):
-            data_dir = join(tmp_dir, 'pascal2007-data')
-            zip_path = download_if_needed(join(cfg.base_uri, 'pascal2007.zip'), tmp_dir)
-            unzip(zip_path, data_dir)
+            data_dir = join(data_cache_dir, 'pascal2007-data')
+            if not os.path.isdir(data_dir):
+                print('Downloading pascal2007.zip...')
+                zip_path = download_if_needed(join(cfg.base_uri, 'pascal2007.zip'), data_cache_dir)
+                unzip(zip_path, data_dir)
         else:
             data_dir = join(cfg.base_uri, 'data', 'pascal_2007')
         train_dir = join(data_dir, 'train')
@@ -170,6 +175,7 @@ def build_databunch(cfg, tmp_dir):
     aug_transforms = ComposeTransforms([ToTensor(), ScaleTransform(img_sz, img_sz), RandomHorizontalFlip()])
     transforms = ComposeTransforms([ToTensor(), ScaleTransform(img_sz, img_sz)])
 
+    train_ds, valid_ds, test_ds = None, None, None
     if cfg.overfit_mode:
         train_ds = CocoDataset(train_dir, train_anns, transforms=transforms)
         train_ds = Subset(train_ds, range(batch_sz))
