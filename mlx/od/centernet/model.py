@@ -101,11 +101,12 @@ class CenterNet(nn.Module):
 
     See https://arxiv.org/abs/1904.07850
     """
-    def __init__(self, backbone_arch, num_labels, pretrained=True):
+    def __init__(self, backbone_arch, num_labels, pretrained=True, loss_alpha=1.0):
         super().__init__()
         self.num_labels = num_labels
         self.stride = 4
         self.subloss_names = ['total_loss', 'keypoint_loss', 'reg_loss']
+        self.loss_alpha = loss_alpha
 
         out_channels = 256
         self.fpn = MyFPN(backbone_arch, out_channels=out_channels, pretrained=pretrained)
@@ -138,6 +139,9 @@ class CenterNet(nn.Module):
         reg = torch.exp(self.reg_head(fpn_out))
         head_out = keypoint, reg
 
+        # XXX here for debugging purposes
+        reg[:, :, :, :] = 40.0
+
         img_height, img_width = input.shape[2:]
         positions = get_positions(
             img_height, img_width, self.stride, keypoint.device)
@@ -152,7 +156,7 @@ class CenterNet(nn.Module):
         encoded_targets = encode(
             targets, positions, self.stride, self.num_labels)
 
-        loss_dict = loss(head_out, encoded_targets)
+        loss_dict = loss(head_out, encoded_targets, loss_alpha=self.loss_alpha)
         if get_head_out:
             return loss_dict, head_out
         return loss_dict

@@ -1,7 +1,7 @@
 import torch.nn.functional as F
 import torch
 
-def loss(head_out, encoded_target):
+def loss(head_out, encoded_target, loss_alpha=1.0):
     out_keypoint, out_reg = head_out
     targ_keypoint, targ_reg = encoded_target
     num_labels = out_keypoint.shape[1]
@@ -16,8 +16,9 @@ def loss(head_out, encoded_target):
 
     flat_out_keypoint = out_keypoint.permute((0, 2, 3, 1)).reshape((-1, num_labels))
     flat_targ_keypoint = targ_keypoint.permute((0, 2, 3, 1)).reshape((-1, num_labels))
-    keypoint_loss = F.mse_loss(flat_out_keypoint, flat_targ_keypoint, reduction='sum') / num_pos
+    
+    keypoint_loss = F.mse_loss(flat_out_keypoint, flat_targ_keypoint, reduction='sum')
 
-    total_loss = keypoint_loss + reg_loss
+    total_loss = keypoint_loss
     return {'total_loss': total_loss, 'keypoint_loss': keypoint_loss,
             'reg_loss': reg_loss}
