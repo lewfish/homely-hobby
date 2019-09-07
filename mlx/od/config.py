@@ -15,7 +15,8 @@ cfg.model.fcos.levels = [2]
 
 cfg.model.centernet = CN()
 cfg.model.centernet.backbone_arch = "resnet18"
-cfg.model.centernet.loss_alpha = 1.0
+cfg.model.centernet.loss_alpha = 2.0
+cfg.model.centernet.loss_beta = 4.0
 
 cfg.model.faster_rcnn = CN()
 

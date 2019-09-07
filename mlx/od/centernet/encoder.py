@@ -25,7 +25,9 @@ def encode(boxlists, positions, stride, num_labels):
             sigma = min(size) / 6
             gaussian2d = get_gaussian2d(positions, center, sigma)
             keypoint[n, label, :, :] = torch.max(keypoint[n, label, :, :], gaussian2d)
+            
             y, x = int(center[0] / stride), int(center[1] / stride)
             reg[n, :, y, x] = size
+            keypoint[n, label, y, x] = 1.0
 
     return keypoint, reg

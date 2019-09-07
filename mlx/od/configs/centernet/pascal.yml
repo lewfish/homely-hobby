@@ -2,10 +2,9 @@ model:
   type: "centernet"
   centernet:
     backbone_arch: "resnet18"
-    loss_alpha: 3.0
 solver:
   lr: 1e-4
-  num_epochs: 5
+  num_epochs: 10
   sync_interval: 2
   batch_sz: 32
   overfit_num_steps: 400
