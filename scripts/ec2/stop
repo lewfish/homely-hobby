@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+
+import json
+
+import boto3
+
+client = boto3.client('ec2', region_name='us-east-1')
+
+spot_path = '/Users/lewfish/.mlx/spot.json'
+
+with open(spot_path, 'r') as spot_file:
+    spot_dict = json.load(spot_file)
+    spot_instance_request_id = spot_dict['spot_instance_request_id']
+    instance_id = spot_dict['instance_id']
+
+response = client.cancel_spot_instance_requests(
+    SpotInstanceRequestIds=[
+        spot_instance_request_id
+    ]
+)
+
+response = client.terminate_instances(
+    InstanceIds=[
+        instance_id
+    ]
+)
+
+print('Waiting for instance to be canceled...')
+waiter = client.get_waiter('instance_terminated')
+waiter.wait(InstanceIds=[instance_id])
+print('Instance terminated!')
