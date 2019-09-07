@@ -16,10 +16,11 @@ from mlx.od.centernet.utils import get_positions
 from mlx.od.boxlist import to_box_pixel, BoxList
 
 def plot_encoded(boxlist, stride, keypoint, reg, classes=None):
-    fig = plt.figure(constrained_layout=True, figsize=(12, 12))
     num_labels = keypoint.shape[0]
     num_plots = num_labels + 2
     ncols = nrows = math.ceil(math.sqrt(num_plots))
+
+    fig = plt.figure(constrained_layout=True, figsize=(3 * ncols, 3 * nrows))
     grid = gridspec.GridSpec(ncols=ncols, nrows=nrows, figure=fig)
 
     for l in range(num_labels):
@@ -58,7 +59,7 @@ def plot_encoded(boxlist, stride, keypoint, reg, classes=None):
 
 class CenterNetPlotter(Plotter):
     def make_debug_plots(self, dataloader, model, classes, output_dir,
-                         max_plots=25, score_thresh=0.4):
+                         max_plots=25, score_thresh=0.5):
         preds_dir = join(output_dir, 'preds')
         zip_path = join(output_dir, 'preds.zip')
         make_dir(preds_dir, force_empty=True)
@@ -79,7 +80,7 @@ class CenterNetPlotter(Plotter):
 
                 # Plot image, ground truth, and predictions
                 fig = self.plot_image_preds(x, y, boxlist, classes)
-                plt.savefig(join(preds_dir, '{}-images.png'.format(img_ind)), dpi=200,
+                fig.savefig(join(preds_dir, '{}-images.png'.format(img_ind)),
                             bbox_inches='tight')
                 plt.close(fig)
 
@@ -89,8 +90,8 @@ class CenterNetPlotter(Plotter):
                 stride = model.stride
 
                 fig = plot_encoded(boxlist, stride, keypoint, reg, classes=classes)
-                plt.savefig(
-                    join(preds_dir, '{}-output.png'.format(img_ind)), dpi=100,
+                fig.savefig(
+                    join(preds_dir, '{}-output.png'.format(img_ind)),
                     bbox_inches='tight')
                 plt.close(fig)
 
@@ -100,8 +101,8 @@ class CenterNetPlotter(Plotter):
                 keypoint, reg = encode([y], positions, stride, len(classes))
                 fig = plot_encoded(
                     y, stride, keypoint[0], reg[0], classes=classes)
-                plt.savefig(
-                    join(preds_dir, '{}-targets.png'.format(img_ind)), dpi=100,
+                fig.savefig(
+                    join(preds_dir, '{}-targets.png'.format(img_ind)),
                     bbox_inches='tight')
                 plt.close(fig)
             break

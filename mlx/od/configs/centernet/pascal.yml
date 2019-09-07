@@ -2,14 +2,15 @@ model:
   type: "centernet"
   centernet:
     backbone_arch: "resnet18"
+    loss_alpha: 3.0
 solver:
   lr: 1e-4
-  num_epochs: 10
+  num_epochs: 5
   sync_interval: 2
-  batch_sz: 16
-  overfit_num_epochs: 500
-  overfit_sync_interval: 1000
+  batch_sz: 32
+  overfit_num_steps: 400
   test_num_epochs: 1
+  one_cycle: True
 data:
   dataset: "pascal2007"
   img_sz: 224
