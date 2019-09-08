@@ -41,6 +41,7 @@ cfg.predict_mode = False
 cfg.test_mode = False
 cfg.overfit_mode = False
 cfg.lr_find_mode = False
+cfg.eval_train = False
 cfg.base_uri = ''
 cfg.output_dir = 'output'
 
