@@ -17,7 +17,7 @@ from mlx.od.boxlist import to_box_pixel, BoxList
 
 class FasterRCNNPlotter(Plotter):
     def make_debug_plots(self, dataloader, model, classes, output_dir,
-                         max_plots=25, score_thresh=0.5):
+                         max_plots=25, score_thresh=0.3):
         preds_dir = join(output_dir, 'preds')
         zip_path = join(output_dir, 'preds.zip')
         make_dir(preds_dir, force_empty=True)
