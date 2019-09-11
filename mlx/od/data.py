@@ -2,6 +2,7 @@ from os.path import join
 from collections import defaultdict
 import random
 import os
+import glob
 
 from PIL import Image
 import numpy as np
@@ -15,7 +16,8 @@ from mlx.filesystem.utils import (download_if_needed, get_local_path, make_dir,
 from mlx.od.boxlist import BoxList
 
 pascal2007 = 'pascal2007'
-datasets = [pascal2007]
+cowc = 'cowc'
+datasets = [pascal2007, cowc]
 
 def validate_dataset(dataset):
     if dataset not in datasets:
@@ -56,7 +58,7 @@ class DataBunch():
 class ToTensor(object):
     def __init__(self):
         self.to_tensor = torchvision.transforms.ToTensor()
-    
+
     def __call__(self, x, y):
         return (self.to_tensor(x), y)
 
@@ -83,13 +85,13 @@ class RandomHorizontalFlip(object):
             boxes = y.boxes
             boxes[:, [1, 3]] = width - boxes[:, [3, 1]]
             y.boxes = boxes
-        
+
         return (x, y)
 
 class ComposeTransforms(object):
     def __init__(self, transforms):
         self.transforms = transforms
-    
+
     def __call__(self, x, y):
         for t in self.transforms:
             x, y = t(x, y)
@@ -133,8 +135,11 @@ class CocoDataset(Dataset):
         img_id = self.img2id[img_fn]
         img = Image.open(join(self.img_dir, img_fn))
 
-        boxes, labels = self.id2boxes[img_id], self.id2labels[img_id]
-        boxlist = BoxList(boxes, labels=labels)
+        if img_id in self.id2boxes:
+            boxes, labels = self.id2boxes[img_id], self.id2labels[img_id]
+            boxlist = BoxList(boxes, labels=labels)
+        else:
+            boxlist = BoxList(torch.empty((0, 4)), labels=torch.empty((0,)))
         if self.transforms:
             return self.transforms(img, boxlist)
         return (img, boxlist)
@@ -170,6 +175,20 @@ def build_databunch(cfg, tmp_dir):
         train_anns = [join(data_dir, 'train.json'), join(data_dir, 'valid.json')]
         test_dir = join(data_dir, 'test')
         test_anns = [join(data_dir, 'test.json')]
+    elif cfg.data.dataset == cowc:
+        if cfg.base_uri.startswith('s3://'):
+            data_dir = join(data_cache_dir, 'cowc-data')
+            if not os.path.isdir(data_dir):
+                print('Downloading cowc data...')
+                zip_path = download_if_needed(
+                    join(cfg.base_uri, 'no_neg_cowc.zip'), data_cache_dir)
+                unzip(zip_path, data_dir)
+        else:
+            data_dir = join(cfg.base_uri, 'no_neg_cowc')
+        train_dir = join(data_dir, 'train')
+        train_anns = glob.glob(join(train_dir, '*.json'))
+        test_dir = join(data_dir, 'valid')
+        test_anns = glob.glob(join(test_dir, '*.json'))
 
     label_names = get_label_names(train_anns[0])
     aug_transforms = ComposeTransforms([ToTensor(), ScaleTransform(img_sz, img_sz), RandomHorizontalFlip()])
