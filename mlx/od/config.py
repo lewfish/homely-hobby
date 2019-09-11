@@ -15,8 +15,19 @@ cfg.model.fcos.levels = [2]
 
 cfg.model.centernet = CN()
 cfg.model.centernet.backbone_arch = "resnet18"
-cfg.model.centernet.loss_alpha = 2.0
-cfg.model.centernet.loss_beta = 4.0
+cfg.model.centernet.nms = False
+cfg.model.centernet.max_pool_nms = True
+cfg.model.centernet.encoder = CN()
+cfg.model.centernet.encoder.mode = 'gaussian'
+cfg.model.centernet.encoder.radius = -1
+cfg.model.centernet.loss = CN()
+cfg.model.centernet.loss.alpha = 2.0
+cfg.model.centernet.loss.beta = 4.0
+cfg.model.centernet.loss.reg_scale = 0.1
+cfg.model.centernet.loss.mode = 'centernet'
+cfg.model.centernet.head = CN()
+cfg.model.centernet.head.mode = 'centernet'
+cfg.model.centernet.head.num_blocks = 1
 
 cfg.model.faster_rcnn = CN()
 
@@ -53,7 +64,7 @@ def process_config(cfg):
     img_sz = cfg.data.img_sz
     if cfg.overfit_mode:
         cfg.data.img_sz = img_sz // 2
-        cfg.solver.batch_sz = 4
+        cfg.solver.batch_sz = 8
         if cfg.test_mode:
             cfg.solver.overfit_num_steps = cfg.solver.test_overfit_num_steps
 

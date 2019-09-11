@@ -5,15 +5,11 @@ model:
     nms: True
     max_pool_nms: True
     encoder: 
-      mode: 'gaussian'
+      mode: 'rectangle'
+      radius: 2
     loss:
-      mode: "centernet"
-      reg_scale: 0.1
-      alpha: 2.0
-      beta: 4.0
-    head:
-      mode: "deep"
-      num_blocks: 4
+      mode: "bce"
+      reg_scale: 1.0
 solver:
   lr: 1.25e-4
   num_epochs: 10

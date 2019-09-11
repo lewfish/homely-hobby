@@ -12,7 +12,7 @@ from mlx.od.centernet.encoder import encode
 from mlx.od.centernet.loss import loss
 from mlx.od.centernet.utils import get_positions, prob2logit
 
-class MyFPN(nn.Module):
+class FCN(nn.Module):
     def __init__(self, backbone_arch, out_channels=256, pretrained=True):
         # Assumes backbone_arch in is Resnet family.
         super().__init__()
@@ -44,20 +44,15 @@ class MyFPN(nn.Module):
         self.backbone(torch.rand((1, 3, 256, 256)))
         self.cross_conv1 = nn.Conv2d(
             self.backbone_out['layer1'].shape[1], out_channels, 1)
-        self.out_conv1 = nn.Conv2d(
-            out_channels, out_channels, 3, 1, 1)
-
         self.cross_conv2 = nn.Conv2d(
             self.backbone_out['layer2'].shape[1], out_channels, 1)
-
         self.cross_conv3 = nn.Conv2d(
             self.backbone_out['layer3'].shape[1], out_channels, 1)
-
         self.cross_conv4 = nn.Conv2d(
             self.backbone_out['layer4'].shape[1], out_channels, 1)
 
     def forward(self, input):
-        """Computes output of FPN.
+        """Computes output of FCN.
 
         Args:
             input: (tensor) batch of images with shape (batch_sz, 3, h, w)
@@ -71,20 +66,43 @@ class MyFPN(nn.Module):
         self.backbone_out = {}
         self.backbone(input)
 
-        # c* is cross output, d* is downsampling output
         c4 = self.cross_conv4(self.backbone_out['layer4'])
         d4 = c4
 
         c3 = self.cross_conv3(self.backbone_out['layer3'])
-        d3 = c3 + nn.functional.interpolate(d4, c3.shape[2:])
+        d3 = c3 + nn.functional.interpolate(d4, c3.shape[2:], mode='bilinear')
 
         c2 = self.cross_conv2(self.backbone_out['layer2'])
-        d2 = c2 + nn.functional.interpolate(d3, c2.shape[2:])
+        d2 = c2 + nn.functional.interpolate(d3, c2.shape[2:], mode='bilinear')
 
         c1 = self.cross_conv1(self.backbone_out['layer1'])
-        d1 = c1 + nn.functional.interpolate(d2, c1.shape[2:])
+        d1 = c1 + nn.functional.interpolate(d2, c1.shape[2:], mode='bilinear')
 
-        return self.out_conv1(d1)
+        return d1
+
+class ConvBlock(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_channels, in_channels, 3, 1, 1)
+        self.bn = nn.BatchNorm2d(out_channels)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn(x)
+        x = nn.functional.relu(x)
+        return x
+
+class DeepHead(nn.Module):
+    def __init__(self, in_channels, out_channels, num_blocks):
+        super().__init__()
+        self.conv_blocks = nn.Sequential(
+            *[ConvBlock(in_channels, in_channels) for _ in range(num_blocks)])
+        self.final_conv = nn.Conv2d(in_channels, out_channels, 1, 1)
+
+    def forward(self, x):
+        x = self.conv_blocks(x)
+        x = self.final_conv(x)
+        return x
 
 class Head(nn.Module):
     def __init__(self, in_channels, out_channels):
@@ -101,22 +119,25 @@ class CenterNet(nn.Module):
 
     See https://arxiv.org/abs/1904.07850
     """
-    def __init__(self, backbone_arch, num_labels, pretrained=True,
-                 loss_alpha=2.0, loss_beta=4.0):
+    def __init__(self, backbone_arch, num_labels, cfg, pretrained=True):
         super().__init__()
         self.num_labels = num_labels
         self.stride = 4
         self.subloss_names = ['total_loss', 'keypoint_loss', 'reg_loss']
-        self.loss_alpha = loss_alpha
-        self.loss_beta = loss_beta
+        self.cfg = cfg
 
         out_channels = 256
-        self.fpn = MyFPN(backbone_arch, out_channels=out_channels, pretrained=pretrained)
-        self.keypoint_head = Head(out_channels, num_labels)
-        self.reg_head = Head(out_channels, 2)
-        
-        # Retinanet init
-        torch.nn.init.constant_(self.keypoint_head.conv2.bias, prob2logit(0.01))
+        self.fcn = FCN(backbone_arch, out_channels=out_channels, pretrained=pretrained)
+
+        if cfg.model.centernet.head.mode == 'centernet':
+            self.keypoint_head = Head(out_channels, num_labels)
+            self.reg_head = Head(out_channels, 2)
+            torch.nn.init.constant_(self.keypoint_head.conv2.bias, prob2logit(0.01))
+        elif cfg.model.centernet.head.mode == 'deep':
+            num_blocks = cfg.model.centernet.head.num_blocks
+            self.keypoint_head = DeepHead(out_channels, num_labels, num_blocks)
+            self.reg_head = DeepHead(out_channels, 2, num_blocks)
+            torch.nn.init.constant_(self.keypoint_head.final_conv.bias, prob2logit(0.01))
 
     def forward(self, input, targets=None, get_head_out=False):
         """Forward pass
@@ -138,9 +159,9 @@ class CenterNet(nn.Module):
 
             if get_head_out is True, also returns the raw output of the head
         """
-        fpn_out = self.fpn(input)
-        keypoint = torch.sigmoid(self.keypoint_head(fpn_out))
-        reg = torch.exp(self.reg_head(fpn_out))
+        fcn_out = self.fcn(input)
+        keypoint = torch.sigmoid(self.keypoint_head(fcn_out))
+        reg = torch.exp(self.reg_head(fcn_out))
         head_out = keypoint, reg
 
         img_height, img_width = input.shape[2:]
@@ -149,16 +170,16 @@ class CenterNet(nn.Module):
 
         if targets is None:
             boxlists = decode(
-                keypoint, reg, positions, self.stride)
+                keypoint, reg, positions, self.stride, self.cfg)
+            if self.cfg.model.centernet.nms:
+                boxlists = [bl.nms() for bl in boxlists]
             if get_head_out:
                 return boxlists, head_out
             return boxlists
 
         encoded_targets = encode(
-            targets, positions, self.stride, self.num_labels)
-
-        loss_dict = loss(
-            head_out, encoded_targets, loss_alpha=self.loss_alpha, loss_beta=self.loss_beta)
+            targets, positions, self.stride, self.num_labels, self.cfg)
+        loss_dict = loss(head_out, encoded_targets, self.cfg)
         if get_head_out:
             return loss_dict, head_out
         return loss_dict

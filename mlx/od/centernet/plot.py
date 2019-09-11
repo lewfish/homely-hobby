@@ -60,7 +60,7 @@ def plot_encoded(boxlist, stride, keypoint, reg, classes=None):
 
 class CenterNetPlotter(Plotter):
     def make_debug_plots(self, dataloader, model, classes, output_path,
-                         max_plots=25, score_thresh=0.5):
+                         max_plots=25, score_thresh=0.3):
         with tempfile.TemporaryDirectory() as preds_dir:
             model.eval()
             for batch_x, batch_y in dataloader:
@@ -96,7 +96,7 @@ class CenterNetPlotter(Plotter):
                     # Plot encoding of ground truth targets.
                     h, w = x.shape[1:]
                     positions = get_positions(h, w, stride, y.boxes.device)
-                    keypoint, reg = encode([y], positions, stride, len(classes))
+                    keypoint, reg = encode([y], positions, stride, len(classes), self.cfg)
                     fig = plot_encoded(
                         y, stride, keypoint[0], reg[0], classes=classes)
                     fig.savefig(

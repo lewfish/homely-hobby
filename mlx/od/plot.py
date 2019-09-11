@@ -68,6 +68,9 @@ def plot_dataloader(dataloader, label_names, output_path):
     plt.close()
 
 class Plotter():
+    def __init__(self, cfg):
+        self.cfg = cfg
+
     @abstractmethod
     def make_debug_plots(self, dataset, model, classes, output_dir, max_plots=25, score_thresh=0.25):
         pass
@@ -129,10 +132,10 @@ class Plotter():
 def build_plotter(cfg):
     if cfg.model.type == fcos:
         from mlx.od.fcos.plot import FCOSPlotter
-        return FCOSPlotter()
+        return FCOSPlotter(cfg)
     elif cfg.model.type == centernet:
         from mlx.od.centernet.plot import CenterNetPlotter
-        return CenterNetPlotter()
+        return CenterNetPlotter(cfg)
     elif cfg.model.type == faster_rcnn:
         from mlx.od.faster_rcnn.plot import FasterRCNNPlotter
-        return FasterRCNNPlotter()
+        return FasterRCNNPlotter(cfg)

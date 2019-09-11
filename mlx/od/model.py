@@ -20,10 +20,7 @@ def build_model(cfg, num_labels):
             levels=cfg.model.fcos.levels)
     elif model_type == centernet:
         centernet_opts = cfg.model.centernet
-        return CenterNet(
-            centernet_opts.backbone_arch, num_labels, 
-            loss_alpha=centernet_opts.loss_alpha, 
-            loss_beta=centernet_opts.loss_beta)
+        return CenterNet(centernet_opts.backbone_arch, num_labels, cfg)
     elif model_type == faster_rcnn:
         return MyFasterRCNN(
             num_labels, cfg.data.img_sz)

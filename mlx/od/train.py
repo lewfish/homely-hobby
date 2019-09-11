@@ -205,7 +205,7 @@ def train(config_path, opts):
         print('\nPlotting training set predictions...')
         plotter.make_debug_plots(
             databunch.train_dl, model, databunch.label_names, 
-            join(output_dir, 'train_preds.zip'))
+            join(output_dir, 'train_preds.zip'), cfg)
 
     print('\nEvaluating on test set...')
     metrics = validate_epoch(
@@ -216,7 +216,7 @@ def train(config_path, opts):
     print('\nPlotting test set predictions...')
     plotter.make_debug_plots(
         databunch.test_dl, model, databunch.label_names, 
-        join(output_dir, 'test_preds.zip'))
+        join(output_dir, 'test_preds.zip'), cfg)
 
     if cfg.output_uri.startswith('s3://'):
         sync_to_dir(output_dir, cfg.output_uri)

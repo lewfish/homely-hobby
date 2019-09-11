@@ -1,7 +1,7 @@
 import torch.nn.functional as F
 import torch
 
-def loss(head_out, encoded_target, loss_alpha=2.0, loss_beta=4.0):
+def loss(head_out, encoded_target, cfg):
     out_keypoint, out_reg = head_out
     targ_keypoint, targ_reg = encoded_target
 
@@ -19,17 +19,29 @@ def loss(head_out, encoded_target, loss_alpha=2.0, loss_beta=4.0):
     is_pos = flat_targ_keypoint == 1.0
     
     flat_out_keypoint_pos = flat_out_keypoint[is_pos]
-    pos_loss = (((1. - flat_out_keypoint_pos) ** loss_alpha) * 
-                torch.log(flat_out_keypoint_pos)).sum()
-
     flat_out_keypoint_neg = flat_out_keypoint[~is_pos]
     flat_targ_keypoint_neg = flat_targ_keypoint[~is_pos]
-    neg_loss = (((1. - flat_targ_keypoint_neg) ** loss_beta) * 
-                (flat_out_keypoint_neg ** loss_alpha) * 
-                torch.log(1. - flat_out_keypoint_neg)).sum()
-    keypoint_loss = -(pos_loss + neg_loss) / num_pos
+    
+    if cfg.model.centernet.loss.mode == 'centernet':
+        loss_alpha = cfg.model.centernet.loss.alpha
+        loss_beta = cfg.model.centernet.loss.beta
+        pos_loss = (((1. - flat_out_keypoint_pos) ** loss_alpha) * 
+                    torch.log(flat_out_keypoint_pos)).sum()
+        neg_loss = (((1. - flat_targ_keypoint_neg) ** loss_beta) * 
+                    (flat_out_keypoint_neg ** loss_alpha) * 
+                    torch.log(1. - flat_out_keypoint_neg)).sum()
+        keypoint_loss = -(pos_loss + neg_loss) / num_pos
+    elif cfg.model.centernet.loss.mode == 'bce':
+        pos_loss = torch.log(flat_out_keypoint_pos).sum()
+        neg_loss = torch.log(1. - flat_out_keypoint_neg).sum()
+        keypoint_loss = -(pos_loss + neg_loss) / num_pos
+    elif cfg.model.centernet.loss.mode == 'focal_bce':
+        loss_alpha = cfg.model.centernet.loss.alpha
+        pos_loss = (((1. - flat_out_keypoint_pos) ** loss_alpha) * torch.log(flat_out_keypoint_pos)).sum()
+        neg_loss = ((flat_out_keypoint_neg ** loss_alpha) * torch.log(1. - flat_out_keypoint_neg)).sum()
+        keypoint_loss = -(pos_loss + neg_loss) / num_pos
 
-    reg_scale = 0.1
+    reg_scale = cfg.model.centernet.loss.reg_scale
     total_loss = keypoint_loss + reg_scale * reg_loss
     return {'total_loss': total_loss, 'keypoint_loss': keypoint_loss,
             'reg_loss': reg_loss}
