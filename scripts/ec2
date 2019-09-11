@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+
+import os
+from os.path import join
+import json
+import datetime
+import base64
+import subprocess
+import time
+
+import boto3
+import click
+
+home_dir = os.path.expanduser('~')
+mlx_cache_dir = join(home_dir, '.mlx')
+config_path = join(mlx_cache_dir, 'ec2.json')
+mlx_repo = join(home_dir, 'projects/mlx')
+local_root = join(home_dir, 'data/pascal2007')
+
+s3_root = 's3://raster-vision-lf-dev/pascal2007'
+client = boto3.client('ec2', region_name='us-east-1')
+
+class EC2Config():
+    def __init__(self, spot_instance_request_id, instance_id, public_dns):
+        self.spot_instance_request_id = spot_instance_request_id
+        self.instance_id = instance_id
+        self.public_dns = public_dns
+
+    def save(self, path):
+        config = {
+            'spot_instance_request_id': self.spot_instance_request_id,
+            'instance_id': self.instance_id,
+            'public_dns': self.public_dns,
+        }
+
+        with open(path, 'w') as config_file:
+            config_file.write(json.dumps(config))
+
+    @staticmethod
+    def load(path):
+        with open(path, 'r') as config_file:
+            config = json.load(config_file)
+            spot_instance_request_id = config['spot_instance_request_id']
+            instance_id = config['instance_id']
+            public_dns = config['public_dns']
+        return EC2Config(spot_instance_request_id, instance_id, public_dns)
+
+@click.group()
+def ec2():
+    pass
+
+@ec2.command()
+def start():
+    user_data = b"""
+    #!/bin/bash
+    cd /home/ec2-user/
+    aws ecr get-login --no-include-email --region us-east-1 | bash
+    docker pull 279682201306.dkr.ecr.us-east-1.amazonaws.com/raster-vision-gpu-lewfish:pytorch
+    git clone https://github.com/lewfish/mlx.git
+    chmod -R o+w mlx/
+    """
+    user_data = base64.b64encode(user_data).decode("ascii")
+
+    response = client.request_spot_instances(
+        DryRun=False,
+        SpotPrice='0.5',
+        InstanceCount=1,
+        Type='one-time',
+        LaunchSpecification={
+            'ImageId': 'ami-0241ac1f637a90b84',
+            'KeyName': 'lewfish-raster-vision',
+            'InstanceType': 'p2.xlarge',
+            'Placement': {
+                'AvailabilityZone': 'us-east-1a',
+            },
+            'IamInstanceProfile': {
+                'Arn': 'arn:aws:iam::279682201306:instance-profile/lfishgoldRasterVisionInstanceProfile'
+            },
+            'SecurityGroupIds': [
+                'sg-06984b3d26ba2115e'
+            ],
+            'BlockDeviceMappings': [
+                {
+                    'DeviceName': '/dev/xvda',
+                    'Ebs': {
+                        'VolumeSize': 100,
+                        'DeleteOnTermination': True,
+                        'VolumeType': 'gp2',
+                        'Encrypted': False
+                    },
+                },
+            ],
+            'UserData': user_data,
+            'EbsOptimized': False,
+            'Monitoring': {
+                'Enabled': True
+            },
+        }
+    )
+
+    spot_instance_request_id = response['SpotInstanceRequests'][0]['SpotInstanceRequestId']
+
+    print('Waiting for spot request to be fulfilled...')
+    waiter = client.get_waiter('spot_instance_request_fulfilled')
+    waiter.wait(SpotInstanceRequestIds=[spot_instance_request_id])
+    print('Spot request fulfilled!')
+
+    instance_id = client.describe_spot_instance_requests(
+        SpotInstanceRequestIds=[spot_instance_request_id])['SpotInstanceRequests'][0]['InstanceId']
+    public_dns = client.describe_instances(InstanceIds=[instance_id])['Reservations'][0]['Instances'][0]['PublicDnsName']
+
+    config = EC2Config(spot_instance_request_id, instance_id, public_dns)
+    config.save(config_path)
+
+    print('Waiting for instance to be running...')
+    waiter = client.get_waiter('instance_running')
+    waiter.wait(InstanceIds=[instance_id])
+    print('Instance is running!')
+
+    print('Waiting for instance status to be OK...')
+    waiter = client.get_waiter('instance_status_ok')
+    waiter.wait(InstanceIds=[instance_id])
+    print('Instance status is OK!')
+
+    print()
+    print('ssh -i ~/.aws/lewfish-raster-vision.pem ec2-user@{}'.format(public_dns))
+
+    print('Waiting 5 mins for user data script to finish...')
+    time.sleep(300) # pause so userdata finishes running
+    print('\a') # beep
+
+@ec2.command()
+def stop():
+    config = EC2Config.load(config_path)
+    response = client.cancel_spot_instance_requests(
+        SpotInstanceRequestIds=[
+            config.spot_instance_request_id
+        ]
+    )
+    response = client.terminate_instances(
+        InstanceIds=[
+            config.instance_id
+        ]
+    )
+    print('Waiting for instance to be canceled...')
+    waiter = client.get_waiter('instance_terminated')
+    waiter.wait(InstanceIds=[config.instance_id])
+    print('Instance terminated!')
+
+@ec2.command()
+def push():
+    config = EC2Config.load(config_path)
+    cmd = ['rsync', '-avzr', '--include=\"*.py\"','--include=\"*.yml\"', '--exclude=\"*\"',
+           join(mlx_repo, 'mlx'), 'ec2-user@{}:/home/ec2-user/mlx/'.format(config.public_dns)]
+    subprocess.run(cmd)
+
+@ec2.command()
+@click.argument('key')
+def download(key):
+    cmd = ['aws', 's3', 'sync', join(s3_root, key), join(local_root, key)]
+    subprocess.run(cmd)
+
+@ec2.command()
+@click.argument('command')
+def run(command):
+    config = EC2Config.load(config_path)
+    docker_cmd = ('docker run --shm-size 16G --runtime=nvidia --rm -it '
+                '-v /home/ec2-user/mlx/mlx:/opt/src/mlx -v /home/ec2-user/data:/opt/data '
+                '279682201306.dkr.ecr.us-east-1.amazonaws.com/raster-vision-gpu-lewfish:pytorch {}').format(command)
+    cmd = ['ssh', '-i', '~/.aws/lewfish-raster-vision.pem', '-t',
+           'ec2-user@{}'.format(config.public_dns), docker_cmd]
+    subprocess.run(cmd)
+
+if __name__ == '__main__':
+    ec2()

@@ -3,7 +3,7 @@ import torch.nn.functional as F
 
 from mlx.od.boxlist import BoxList
 
-def decode(keypoint, reg, positions, stride, prob_thresh=0.05):
+def decode(keypoint, reg, positions, stride, cfg, prob_thresh=0.05):
     N = keypoint.shape[0]
     boxlists = []
     flat_positions = positions.permute((1, 2, 0)).reshape((-1, 2))
@@ -15,9 +15,11 @@ def decode(keypoint, reg, positions, stride, prob_thresh=0.05):
         per_reg = reg[n]
         num_labels = per_keypoint.shape[0]
 
-        is_local_max = per_keypoint == F.max_pool2d(
-            per_keypoint, kernel_size=3, stride=1, padding=1)
         is_over_thresh = per_keypoint > prob_thresh
+        is_local_max = torch.ones_like(is_over_thresh)
+        if cfg.model.centernet.max_pool_nms:
+            is_local_max = per_keypoint == F.max_pool2d(
+                per_keypoint, kernel_size=3, stride=1, padding=1)
         is_pos = is_local_max * is_over_thresh
         num_pos = is_pos.sum()
 

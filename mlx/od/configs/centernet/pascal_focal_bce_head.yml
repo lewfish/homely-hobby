@@ -4,13 +4,13 @@ model:
     backbone_arch: "resnet18"
     nms: True
     max_pool_nms: True
-    encoder: 
-      mode: 'gaussian'
+    encoder:
+      mode: 'rectangle'
+      radius: 0
     loss:
-      mode: "centernet"
-      reg_scale: 0.1
+      mode: "focal_bce"
       alpha: 2.0
-      beta: 4.0
+      reg_scale: 1.0
     head:
       mode: "deep"
       num_blocks: 4

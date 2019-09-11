@@ -185,10 +185,6 @@ def train(config_path, opts):
     opt = build_optimizer(cfg, model)
 
     # TODO tensorboard, progress bar
-
-    if cfg.output_uri.startswith('s3://'):
-        sync_from_dir(cfg.output_uri, output_dir)
-
     if cfg.model.init_weights:
         model.load_state_dict(
             torch.load(cfg.model.init_weights, map_location=device))
@@ -199,6 +195,17 @@ def train(config_path, opts):
         else:
             train_loop(cfg, databunch, model, opt, device, output_dir)
 
+    if cfg.eval_train:
+        print('\nEvaluating on train set...')
+        metrics = validate_epoch(
+            cfg, model, device, databunch.train_dl, num_labels)
+        print('train metrics: {}'.format(metrics))
+        json_to_file(metrics, join(output_dir, 'train_metrics.json'))
+
+        print('\nPlotting training set predictions...')
+        plotter.make_debug_plots(
+            databunch.train_dl, model, databunch.label_names, 
+            join(output_dir, 'train_preds.zip'), cfg)
 
     print('\nEvaluating on test set...')
     metrics = validate_epoch(
@@ -206,9 +213,10 @@ def train(config_path, opts):
     print('test metrics: {}'.format(metrics))
     json_to_file(metrics, join(output_dir, 'test_metrics.json'))
 
-    print('\nPlotting predictions...')
+    print('\nPlotting test set predictions...')
     plotter.make_debug_plots(
-        databunch.test_dl, model, databunch.label_names, output_dir)
+        databunch.test_dl, model, databunch.label_names, 
+        join(output_dir, 'test_preds.zip'), cfg)
 
     if cfg.output_uri.startswith('s3://'):
         sync_to_dir(output_dir, cfg.output_uri)
