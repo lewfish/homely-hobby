@@ -2,9 +2,10 @@ model:
   type: "centernet"
   centernet:
     backbone_arch: "resnet18"
+    body_arch: 'fcn'
     nms: True
     max_pool_nms: True
-    encoder: 
+    encoder:
       mode: 'gaussian'
     loss:
       mode: "centernet"
@@ -14,6 +15,7 @@ model:
     head:
       mode: "deep"
       num_blocks: 4
+
 solver:
   lr: 1.25e-4
   num_epochs: 10
@@ -24,4 +26,4 @@ solver:
   one_cycle: True
 data:
   dataset: "pascal2007"
-  img_sz: 224
+  img_sz: 256

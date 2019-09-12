@@ -15,6 +15,7 @@ cfg.model.fcos.levels = [2]
 
 cfg.model.centernet = CN()
 cfg.model.centernet.backbone_arch = "resnet18"
+cfg.model.centernet.body_arch = 'fcn'
 cfg.model.centernet.nms = False
 cfg.model.centernet.max_pool_nms = True
 cfg.model.centernet.encoder = CN()
