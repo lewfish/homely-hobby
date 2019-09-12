@@ -139,7 +139,7 @@ class CocoDataset(Dataset):
             boxes, labels = self.id2boxes[img_id], self.id2labels[img_id]
             boxlist = BoxList(boxes, labels=labels)
         else:
-            boxlist = BoxList(torch.empty((0, 4)), labels=torch.empty((0,)))
+            boxlist = BoxList(torch.empty((0, 4)), labels=torch.empty((0,)).long())
         if self.transforms:
             return self.transforms(img, boxlist)
         return (img, boxlist)
@@ -181,10 +181,10 @@ def build_databunch(cfg, tmp_dir):
             if not os.path.isdir(data_dir):
                 print('Downloading cowc data...')
                 zip_path = download_if_needed(
-                    join(cfg.base_uri, 'no_neg_cowc.zip'), data_cache_dir)
+                    join(cfg.base_uri, 'cowc.zip'), data_cache_dir)
                 unzip(zip_path, data_dir)
         else:
-            data_dir = join(cfg.base_uri, 'no_neg_cowc')
+            data_dir = join(cfg.base_uri, 'cowc')
         train_dir = join(data_dir, 'train')
         train_anns = glob.glob(join(train_dir, '*.json'))
         test_dir = join(data_dir, 'valid')

@@ -20,6 +20,7 @@ from mlx.od.config import load_config
 from mlx.od.model import build_model
 from mlx.od.plot import build_plotter
 from mlx.od.optimizer import build_optimizer, build_scheduler
+from mlx.od.boxlist import BoxList
 
 def train_epoch(cfg, model, device, dl, opt, step_scheduler=None, epoch_scheduler=None):
     model.train()
@@ -30,6 +31,16 @@ def train_epoch(cfg, model, device, dl, opt, step_scheduler=None, epoch_schedule
         # skip partial batch at end to avoid messing up batchnorm
         if x.shape[0] < cfg.solver.batch_sz:
             continue
+
+        # XXX add bogus background boxes
+        new_y = []
+        for _x, _y in zip(x, y):
+            h, w = _x.shape[1:]
+            boxes = torch.cat([_y.boxes, torch.tensor([[0., 0, h, w]])], dim=0)
+            labels = torch.cat([_y.get_field('labels'), torch.tensor([0])], dim=0)
+            bl = BoxList(boxes, labels=labels)
+            new_y.append(bl)
+        y = new_y
 
         x = x.to(device)
         y = [_y.to(device) for _y in y]
@@ -44,8 +55,6 @@ def train_epoch(cfg, model, device, dl, opt, step_scheduler=None, epoch_schedule
         for k, v in loss_dict.items():
             train_loss[k] += v.item()
         num_samples += x.shape[0]
-
-        # print(str(batch_ind), flush=True)        
 
     for k, v in train_loss.items():
         train_loss[k] = v / num_samples
@@ -62,7 +71,19 @@ def validate_epoch(cfg, model, device, dl, num_labels):
             x = x.to(device)
             out = model(x)
 
-            ys.extend([_y.cpu() for _y in y])
+            y = [_y.cpu() for _y in y]
+
+            # Remove bogus boxes
+            new_y = []
+            for _y in y:
+                boxes, labels = _y.boxes, _y.get_field('labels')
+                non_zero_inds = labels != 0
+                boxes = boxes[non_zero_inds]
+                labels = labels[non_zero_inds]
+                new_y.append(BoxList(boxes, labels=labels))
+            y = new_y
+
+            ys.extend(y)
             outs.extend([_out.cpu() for _out in out])
             # print(str(batch_ind), flush=True)
 
@@ -75,14 +96,14 @@ def overfit_loop(cfg, databunch, model, opt, device, output_dir):
         raise ValueError(
             'batch_sz and length of train_ds and test_ds '
             'must be the same in overfit_mode')
-        
+
     for step in range(cfg.solver.overfit_num_steps):
         train_loss = train_epoch(
             cfg, model, device, databunch.train_dl, opt)
         if (step + 1) % 25 == 0:
             print('step: {}'.format(step))
             print('train loss: {}'.format(train_loss))
-    
+
     last_model_path = join(output_dir, 'last_model.pth')
     torch.save(model.state_dict(), last_model_path)
 
@@ -147,7 +168,7 @@ def train_loop(cfg, databunch, model, opt, device, output_dir):
             row += [train_loss[k] for k in model.subloss_names]
             log_writer.writerow(row)
 
-        if (cfg.output_uri.startswith('s3://') and 
+        if (cfg.output_uri.startswith('s3://') and
                 ((epoch + 1) % cfg.solver.sync_interval == 0)):
             sync_to_dir(output_dir, cfg.output_uri)
 
@@ -204,7 +225,7 @@ def train(config_path, opts):
 
         print('\nPlotting training set predictions...')
         plotter.make_debug_plots(
-            databunch.train_dl, model, databunch.label_names, 
+            databunch.train_dl, model, databunch.label_names,
             join(output_dir, 'train_preds.zip'), cfg)
 
     print('\nEvaluating on test set...')
@@ -215,7 +236,7 @@ def train(config_path, opts):
 
     print('\nPlotting test set predictions...')
     plotter.make_debug_plots(
-        databunch.test_dl, model, databunch.label_names, 
+        databunch.test_dl, model, databunch.label_names,
         join(output_dir, 'test_preds.zip'), cfg)
 
     if cfg.output_uri.startswith('s3://'):
