@@ -15,6 +15,7 @@ cfg.model.fcos.levels = [2]
 
 cfg.model.centernet = CN()
 cfg.model.centernet.backbone_arch = "resnet18"
+cfg.model.centernet.body_arch = 'fcn'
 cfg.model.centernet.nms = False
 cfg.model.centernet.max_pool_nms = True
 cfg.model.centernet.encoder = CN()
@@ -28,6 +29,7 @@ cfg.model.centernet.loss.mode = 'centernet'
 cfg.model.centernet.head = CN()
 cfg.model.centernet.head.mode = 'centernet'
 cfg.model.centernet.head.num_blocks = 1
+cfg.model.centernet.head.keypoint_init = 0.01
 
 cfg.model.faster_rcnn = CN()
 
