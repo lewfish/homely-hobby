@@ -1,0 +1,9 @@
+model:
+  type: 'tiny'
+solver:
+  lr: 2e-4
+  num_epochs: 10
+  batch_sz: 64
+  one_cycle: True
+data:
+  dataset: 'mnist'
