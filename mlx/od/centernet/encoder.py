@@ -1,10 +1,34 @@
 import torch
+import numpy as np
 
 from mlx.od.centernet.utils import get_positions
 
 def get_gaussian2d(positions, center, sigma):
     offsets = positions - center[:, None, None]
     return torch.exp(-(offsets ** 2).sum(0) / (2 * (sigma ** 2)))
+
+# from https://github.com/xingyizhou/CenterNet/blob/819e0d0dde02f7b8cb0644987a8d3a370aa8206a/src/lib/utils/image.py
+def gaussian_radius(det_size, min_overlap=0.7):
+  height, width = det_size
+
+  a1  = 1
+  b1  = (height + width)
+  c1  = width * height * (1 - min_overlap) / (1 + min_overlap)
+  sq1 = np.sqrt(b1 ** 2 - 4 * a1 * c1)
+  r1  = (b1 + sq1) / 2
+
+  a2  = 4
+  b2  = 2 * (height + width)
+  c2  = (1 - min_overlap) * width * height
+  sq2 = np.sqrt(b2 ** 2 - 4 * a2 * c2)
+  r2  = (b2 + sq2) / 2
+
+  a3  = 4 * min_overlap
+  b3  = -2 * min_overlap * (height + width)
+  c3  = (min_overlap - 1) * width * height
+  sq3 = np.sqrt(b3 ** 2 - 4 * a3 * c3)
+  r3  = (b3 + sq3) / 2
+  return min(r1, r2, r3)
 
 def encode(boxlists, positions, stride, num_labels, cfg):
     N = len(boxlists)
@@ -28,7 +52,8 @@ def encode(boxlists, positions, stride, num_labels, cfg):
 
             mode = cfg.model.centernet.encoder.mode
             if mode == 'gaussian':
-                sigma = min(size) / 12
+                radius = gaussian_radius(size.cpu().numpy())
+                sigma = radius / 3
                 gaussian2d = get_gaussian2d(positions, center, sigma)
                 keypoint[n, label, :, :] = torch.max(keypoint[n, label, :, :], gaussian2d)
             elif mode == 'rectangle':

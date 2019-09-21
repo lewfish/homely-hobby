@@ -28,6 +28,7 @@ ENV PATH /opt/conda/bin:$PATH
 RUN pip install click==7.0 ptvsd==4.2.* shapely==1.6.4 \
      cython==0.29.* pycocotools==2.0.* line_profiler==2.1.* \
      tensorboard==1.14.* tensorboardX==1.8.* yacs==0.1.*
+RUN pip install albumentations==0.3.*
 
 ENV LANG C.UTF-8
 ENV LC_ALL C.UTF-8
