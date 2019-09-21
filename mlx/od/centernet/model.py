@@ -169,6 +169,15 @@ class CenterNet(nn.Module):
             img_height, img_width, self.stride, keypoint.device)
 
         if targets is None:
+            if self.cfg.data.test_aug.hflip:
+                hflip_input = torch.flip(input, [3])
+                hflip_body_out = self.body(hflip_input)
+                hflip_keypoint = torch.sigmoid(self.keypoint_head(hflip_body_out))
+                hflip_reg = torch.exp(self.reg_head(hflip_body_out))
+
+                keypoint = (keypoint + torch.flip(hflip_keypoint, [3])) / 2.
+                reg = (reg + torch.flip(hflip_reg, [3])) / 2.
+                head_out = keypoint, reg
             boxlists = decode(
                 keypoint, reg, positions, self.stride, self.cfg)
             if self.cfg.model.centernet.nms:

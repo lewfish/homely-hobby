@@ -47,6 +47,12 @@ cfg.data = CN()
 cfg.data.dataset = "pascal2007"
 cfg.data.img_sz = 448
 cfg.data.num_workers = 0
+cfg.data.train_aug = CN()
+cfg.data.train_aug.rgb_shift = False
+cfg.data.train_aug.shift_scale_rotate = False
+cfg.data.train_aug.hflip = True
+cfg.data.test_aug = CN()
+cfg.data.test_aug.hflip = False
 
 cfg.predict_mode = False
 cfg.test_mode = False

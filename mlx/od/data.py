@@ -9,6 +9,16 @@ import torch
 from torch.utils.data import Dataset, DataLoader, Subset
 import torch.nn.functional as F
 import torchvision
+import cv2
+from albumentations import (
+    BboxParams,
+    HorizontalFlip,
+    Resize,
+    Compose,
+    RGBShift,
+    ShiftScaleRotate
+)
+from albumentations.pytorch import ToTensor
 
 from mlx.filesystem.utils import (download_if_needed, get_local_path, make_dir,
                                   sync_from_dir, unzip, file_to_json)
@@ -53,48 +63,6 @@ class DataBunch():
         rep += 'label_names: ' + ','.join(self.label_names)
         return rep
 
-class ToTensor(object):
-    def __init__(self):
-        self.to_tensor = torchvision.transforms.ToTensor()
-    
-    def __call__(self, x, y):
-        return (self.to_tensor(x), y)
-
-class ScaleTransform(object):
-    def __init__(self, height, width):
-        self.height = height
-        self.width = width
-
-    def __call__(self, x, y):
-        yscale = self.height / x.shape[1]
-        xscale = self.width / x.shape[2]
-        x = F.interpolate(x.unsqueeze(0), size=(self.height, self.width), mode='bilinear')[0]
-        return (x, y.scale(yscale, xscale))
-
-class RandomHorizontalFlip(object):
-    def __init__(self, prob=0.5):
-        self.prob = prob
-
-    def __call__(self, x, y):
-        if random.random() < self.prob:
-            height, width = x.shape[-2:]
-            x = x.flip(-1)
-
-            boxes = y.boxes
-            boxes[:, [1, 3]] = width - boxes[:, [3, 1]]
-            y.boxes = boxes
-        
-        return (x, y)
-
-class ComposeTransforms(object):
-    def __init__(self, transforms):
-        self.transforms = transforms
-    
-    def __call__(self, x, y):
-        for t in self.transforms:
-            x, y = t(x, y)
-        return x, y
-
 def collate_fn(data):
     x = [d[0].unsqueeze(0) for d in data]
     y = [d[1] for d in data]
@@ -122,21 +90,31 @@ class CocoDataset(Dataset):
                 img_id = ann['image_id']
                 box = ann['bbox']
                 label = ann['category_id']
-                box = torch.tensor([[box[1], box[0], box[1] + box[3], box[0] + box[2]]])
                 self.id2boxes[img_id].append(box)
                 self.id2labels[img_id].append(label)
-        self.id2boxes = dict([(id, torch.cat(boxes).float()) for id, boxes in self.id2boxes.items()])
-        self.id2labels = dict([(id, torch.tensor(labels)) for id, labels in self.id2labels.items()])
+
+        random.seed(1234)
+        random.shuffle(self.imgs)
+        self.id2boxes = dict([(id, boxes) for id, boxes in self.id2boxes.items()])
+        self.id2labels = dict([(id, labels) for id, labels in self.id2labels.items()])
 
     def __getitem__(self, ind):
         img_fn = self.imgs[ind]
         img_id = self.img2id[img_fn]
-        img = Image.open(join(self.img_dir, img_fn))
-
+        img = np.array(Image.open(join(self.img_dir, img_fn)))
         boxes, labels = self.id2boxes[img_id], self.id2labels[img_id]
-        boxlist = BoxList(boxes, labels=labels)
         if self.transforms:
-            return self.transforms(img, boxlist)
+            out = self.transforms(image=img, bboxes=boxes, labels=labels)
+            img = out['image']
+            boxes = torch.tensor(out['bboxes'])
+            labels = torch.tensor(out['labels'])
+
+        if len(boxes) > 0:
+            x, y, w, h = boxes[:, 0:1], boxes[:, 1:2], boxes[:, 2:3], boxes[:, 3:4]
+            boxes = torch.cat([y, x, y+h, x+w], dim=1)
+            boxlist = BoxList(boxes, labels=labels)
+        else:
+            boxlist = BoxList(torch.empty((0, 4)), labels=torch.empty((0,)))
         return (img, boxlist)
 
     def __len__(self):
@@ -172,8 +150,21 @@ def build_databunch(cfg, tmp_dir):
         test_anns = [join(data_dir, 'test.json')]
 
     label_names = get_label_names(train_anns[0])
-    aug_transforms = ComposeTransforms([ToTensor(), ScaleTransform(img_sz, img_sz), RandomHorizontalFlip()])
-    transforms = ComposeTransforms([ToTensor(), ScaleTransform(img_sz, img_sz)])
+
+    aug_transforms = []
+    if cfg.data.train_aug.hflip:
+        aug_transforms.append(HorizontalFlip(p=0.5))
+    if cfg.data.train_aug.rgb_shift:
+        aug_transforms.append(RGBShift(20, 20, 20, p=0.5))
+    if cfg.data.train_aug.shift_scale_rotate:
+        aug_transforms.append(ShiftScaleRotate(
+            shift_limit=0.1, scale_limit=0.3, rotate_limit=0, border_mode=cv2.BORDER_CONSTANT))
+    basic_transforms = [Resize(img_sz, img_sz), ToTensor()]
+    aug_transforms.extend(basic_transforms)
+
+    bbox_params = BboxParams(format='coco', min_area=0., min_visibility=0.2, label_fields=['labels'])
+    aug_transforms = Compose(aug_transforms, bbox_params=bbox_params)
+    transforms = Compose(basic_transforms, bbox_params=bbox_params)
 
     train_ds, valid_ds, test_ds = None, None, None
     if cfg.overfit_mode:

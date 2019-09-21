@@ -24,4 +24,10 @@ solver:
   one_cycle: True
 data:
   dataset: "pascal2007"
-  img_sz: 224
+  img_sz: 256
+  train_aug:
+    rgb_shift: True
+    shift_scale_rotate: True
+    hflip: True
+  test_aug:
+    hflip: False
