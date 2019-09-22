@@ -1,6 +1,18 @@
+from os.path import join
+import math
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import matplotlib.gridspec as gridspec
+import torch
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import MNIST
 from torchvision.transforms import Compose, ToTensor
+
+from mlx.filesystem.utils import make_dir
+from mlx.classification.plot import plot_xyz
 
 mnist = 'mnist'
 datasets = [mnist]
@@ -29,6 +41,31 @@ class DataBunch():
             rep += 'test_ds: {} items\n'.format(len(self.test_ds))
         rep += 'label_names: ' + ','.join(self.label_names)
         return rep
+
+    def plot_dataloader(self, dataloader, output_path):
+        x, y = next(iter(dataloader))
+        batch_sz = x.shape[0]
+
+        ncols = nrows = math.ceil(math.sqrt(batch_sz))
+        fig = plt.figure(constrained_layout=True, figsize=(3 * ncols, 3 * nrows))
+        grid = gridspec.GridSpec(ncols=ncols, nrows=nrows, figure=fig)
+
+        for i in range(batch_sz):
+            ax = fig.add_subplot(grid[i])
+            plot_xyz(ax, x[i], y[i], self.label_names)
+
+        make_dir(output_path, use_dirname=True)
+        plt.savefig(output_path)
+        plt.close()
+
+    def plot_dataloaders(self, output_dir):
+        if self.train_dl:
+            self.plot_dataloader(self.train_dl, join(output_dir, 'dataloaders/train.png'))
+        if self.valid_dl:
+            self.plot_dataloader(self.valid_dl, join(output_dir, 'dataloaders/valid.png'))
+        if self.test_dl:
+            self.plot_dataloader(self.test_dl, join(output_dir, 'dataloaders/test.png'))
+
 
 def build_databunch(cfg):
     dataset = cfg.data.dataset
