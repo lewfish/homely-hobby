@@ -247,6 +247,15 @@ class Head(nn.Module):
         x = nn.functional.relu(self.conv1(x))
         return self.conv2(x)
 
+def fill_fc_weights(layers):
+    for m in layers.modules():
+        if isinstance(m, nn.Conv2d):
+            nn.init.normal_(m.weight, std=0.001)
+            # torch.nn.init.kaiming_normal_(m.weight.data, nonlinearity='relu')
+            # torch.nn.init.xavier_normal_(m.weight.data)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+
 class CenterNet(nn.Module):
     """CenterNet object detector
 
@@ -273,11 +282,15 @@ class CenterNet(nn.Module):
         if cn_cfg.head.mode == 'centernet':
             self.keypoint_head = Head(out_channels, num_labels)
             self.reg_head = Head(out_channels, 2)
+            fill_fc_weights(self.keypoint_head)
+            fill_fc_weights(self.reg_head)
             torch.nn.init.constant_(self.keypoint_head.conv2.bias, prob2logit(cn_cfg.head.keypoint_init))
         elif cn_cfg.head.mode == 'deep':
             num_blocks = cn_cfg.head.num_blocks
             self.keypoint_head = DeepHead(out_channels, num_labels, num_blocks)
             self.reg_head = DeepHead(out_channels, 2, num_blocks)
+            fill_fc_weights(self.keypoint_head)
+            fill_fc_weights(self.reg_head)
             torch.nn.init.constant_(self.keypoint_head.final_conv.bias, prob2logit(cn_cfg.head.keypoint_init))
 
     def forward(self, input, targets=None, get_head_out=False):
