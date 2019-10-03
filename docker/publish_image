@@ -1,6 +1,6 @@
 IMAGE_NAME="mlx"
-ECR_IMAGE="raster-vision-gpu-lewfish"
-ECR_IMAGE_TAG="pytorch"
+ECR_IMAGE="raster-vision-lfishgold-pytorch"
+ECR_IMAGE_TAG="mlx"
 ACCOUNT_ID=$(aws sts get-caller-identity --output text --query 'Account')
 AWS_REGION="us-east-1"
 
