@@ -55,7 +55,7 @@ def start():
     #!/bin/bash
     cd /home/ec2-user/
     aws ecr get-login --no-include-email --region us-east-1 | bash
-    docker pull 279682201306.dkr.ecr.us-east-1.amazonaws.com/raster-vision-gpu-lewfish:pytorch
+    docker pull 279682201306.dkr.ecr.us-east-1.amazonaws.com/raster-vision-lfishgold-pytorch:mlx
     git clone https://github.com/lewfish/mlx.git
     chmod -R o+w mlx/
     """
@@ -166,7 +166,7 @@ def run(command):
     config = EC2Config.load(config_path)
     docker_cmd = ('docker run --shm-size 16G --runtime=nvidia --rm -it '
                 '-v /home/ec2-user/mlx/mlx:/opt/src/mlx -v /home/ec2-user/data:/opt/data '
-                '279682201306.dkr.ecr.us-east-1.amazonaws.com/raster-vision-gpu-lewfish:pytorch {}').format(command)
+                '279682201306.dkr.ecr.us-east-1.amazonaws.com/raster-vision-lfishgold-pytorch:mlx {}').format(command)
     cmd = ['ssh', '-i', '~/.aws/lewfish-raster-vision.pem', '-t',
            'ec2-user@{}'.format(config.public_dns), docker_cmd]
     subprocess.run(cmd)

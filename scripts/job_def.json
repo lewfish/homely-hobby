@@ -1,9 +1,9 @@
 {
-    "jobDefinitionName": "lewfishPyTorchCustomGpuJobDefinition",
+    "jobDefinitionName": "lfishgoldMlxJobDefinition",
     "type": "container",
     "parameters": {},
     "containerProperties": {
-        "image": "279682201306.dkr.ecr.us-east-1.amazonaws.com/raster-vision-gpu-lewfish:pytorch",
+        "image": "279682201306.dkr.ecr.us-east-1.amazonaws.com/raster-vision-lfishgold-pytorch:mlx",
         "vcpus": 8,
         "memory": 55000,
         "command": [],
@@ -22,6 +22,12 @@
             }
         ],
         "environment": [],
+        "resourceRequirements": [
+            {
+                "value": "1",
+                "type": "GPU"
+            }
+        ],
         "mountPoints": [
             {
                 "containerPath": "/opt/data",

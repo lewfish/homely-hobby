@@ -4,8 +4,8 @@ import uuid
 
 import click
 
-job_def = 'lewfishPyTorchCustomGpuJobDefinition'
-job_queue = 'lewfishRasterVisionGpuJobQueue'
+job_def = 'lfishgoldMlxJobDefinition'
+job_queue = 'lfishgoldRasterVisionGpuJobQueue'
 
 @click.command()
 @click.argument('cmd')
