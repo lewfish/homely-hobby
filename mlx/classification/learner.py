@@ -4,13 +4,20 @@ import warnings
 warnings.filterwarnings('ignore')
 import time
 import datetime
+import math
 
 import click
 import torch
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import matplotlib.gridspec as gridspec
 
 from mlx.filesystem.utils import (
     sync_to_dir, json_to_file, file_to_json)
 from mlx.classification.metrics import compute_conf_mat_metrics
+from mlx.classification.plot import plot_xyz
 
 class Learner():
     def __init__(self, cfg, databunch, output_dir, model, loss_fn, opt, device,
@@ -69,6 +76,29 @@ class Learner():
 
         return compute_conf_mat_metrics(conf_mat)
 
+    def plot_preds(self, dataloader, output_path):
+        self.model.eval()
+        with torch.no_grad():
+            x, y = next(iter(dataloader))
+            batch_sz = x.shape[0]
+            x = x.to(self.device)
+            out = self.model(x)
+
+            x = x.cpu()
+            out = out.argmax(-1).view(-1).cpu()
+            y = y.cpu()
+        
+        ncols = nrows = math.ceil(math.sqrt(batch_sz))
+        fig = plt.figure(constrained_layout=True, figsize=(3 * ncols, 3 * nrows))
+        grid = gridspec.GridSpec(ncols=ncols, nrows=nrows, figure=fig)
+
+        for i in range(batch_sz):
+            ax = fig.add_subplot(grid[i])
+            plot_xyz(ax, x[i], y[i], self.databunch.label_names, z=out[i])
+
+        plt.savefig(output_path)
+        plt.close()
+
     def overfit(self):
         if not (self.cfg.solver.batch_sz == len(self.databunch.train_ds) == len(self.databunch.test_ds)):
             raise ValueError(
@@ -118,18 +148,18 @@ class Learner():
             print('elapsed: {}'.format(epoch_time), flush=True)
 
             metrics = self.validate(self.databunch.valid_dl)
-        print('validation metrics: {}'.format(metrics), flush=True)
+            print('validation metrics: {}'.format(metrics), flush=True)
 
-        torch.save(self.model.state_dict(), last_model_path)
-        train_state = {'epoch': epoch}
-        json_to_file(train_state, train_state_path)
+            torch.save(self.model.state_dict(), last_model_path)
+            train_state = {'epoch': epoch}
+            json_to_file(train_state, train_state_path)
 
-        with open(log_path, 'a') as log_file:
-            log_writer = csv.writer(log_file)
-            row = [epoch, epoch_time, train_loss]
-            row += [metrics[k] for k in metric_names]
-            log_writer.writerow(row)
+            with open(log_path, 'a') as log_file:
+                log_writer = csv.writer(log_file)
+                row = [epoch, epoch_time, train_loss]
+                row += [metrics[k] for k in metric_names]
+                log_writer.writerow(row)
 
-        if (self.cfg.output_uri.startswith('s3://') and
-                ((epoch + 1) % self.cfg.solver.sync_interval == 0)):
-            sync_to_dir(self.output_dir, self.cfg.output_uri)
+            if (self.cfg.output_uri.startswith('s3://') and
+                    ((epoch + 1) % self.cfg.solver.sync_interval == 0)):
+                sync_to_dir(self.output_dir, self.cfg.output_uri)

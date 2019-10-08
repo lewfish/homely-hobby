@@ -44,10 +44,8 @@ def main(config_path, opts):
     databunch = build_databunch(cfg)
     print(databunch)
     print()
-    '''
     if not cfg.predict_mode:
         databunch.plot_dataloaders(output_dir)
-    '''
 
     # Setup learner.
     num_labels = len(databunch.label_names)
@@ -87,22 +85,16 @@ def main(config_path, opts):
         print('train metrics: {}'.format(metrics))
         json_to_file(metrics, join(output_dir, 'train_metrics.json'))
 
-        '''
         print('\nPlotting training set predictions...')
-        plotter.make_debug_plots(cfg, databunch.train_dl, databunch.label_names,
-            modelbunch, join(output_dir, 'train_preds.zip'))
-        '''
+        learner.plot_preds(databunch.train_dl, join(output_dir, 'train_preds.png'))
 
     print('\nEvaluating on test set...')
     metrics = learner.validate(databunch.test_dl)
     print('test metrics: {}'.format(metrics))
     json_to_file(metrics, join(output_dir, 'test_metrics.json'))
 
-    '''
     print('\nPlotting test set predictions...')
-    plotter.make_debug_plots(cfg, databunch.test_dl, databunch.label_names,
-        modelbunch, join(output_dir, 'test_preds.zip'))
-    '''
+    learner.plot_preds(databunch.test_dl, join(output_dir, 'test_preds.png'))
 
     if cfg.output_uri.startswith('s3://'):
         sync_to_dir(output_dir, cfg.output_uri)
